@@ -1,0 +1,44 @@
+{
+  "name": "cloude-drive",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "next typegen && tsc --noEmit",
+    "test": "tsx --test src/modules/auth/password.test.ts src/modules/auth/token.test.ts src/modules/auth/http.test.ts src/modules/files/validation.test.ts src/modules/files/routes.test.ts src/modules/sharing/policy.test.ts",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts",
+    "worker": "tsx src/workers/file-process.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1134.0",
+    "@aws-sdk/s3-request-presigner": "^3.1134.0",
+    "@prisma/client": "^6.19.3",
+    "bullmq": "^6.3.6",
+    "dotenv": "^17.4.2",
+    "ioredis": "^6.0.0",
+    "jose": "^6.2.12",
+    "next": "16.3.5",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "server-only": "^0.0.1",
+    "uuid": "^14.0.2",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.5",
+    "prisma": "^6.19.3",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.13",
+    "typescript": "^5"
+  }
+}

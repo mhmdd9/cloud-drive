@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum FileStatus {
+  PENDING
+  PROCESSING
+  READY
+  REJECTED
+}
+
+enum SharePermission {
+  VIEW
+  DOWNLOAD
+  EDIT
+}
+
+model User {
+  id           String        @id @default(uuid(7)) @db.Uuid
+  email        String        @unique
+  name         String
+  passwordHash String
+  active       Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  roles        UserRole[]
+  memberships  GroupMember[]
+  files        File[]
+  shares       FileShare[]
+}
+
+model Role {
+  id            String             @id @default(uuid(7)) @db.Uuid
+  name          String             @unique
+  permissions   String[]           @default([])
+  users         UserRole[]
+  sharePolicies GroupSharePolicy[]
+}
+
+model UserRole {
+  userId String @db.Uuid
+  roleId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model Group {
+  id            String             @id @default(uuid(7)) @db.Uuid
+  name          String             @unique
+  members       GroupMember[]
+  shares        FileShare[]
+  sharePolicies GroupSharePolicy[]
+}
+
+model GroupMember {
+  groupId String @db.Uuid
+  userId  String @db.Uuid
+  group   Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, userId])
+  @@index([userId])
+}
+
+model File {
+  id        String      @id @default(uuid(7)) @db.Uuid
+  ownerId   String      @db.Uuid
+  owner     User        @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  name      String
+  mimeType  String
+  size      BigInt
+  objectKey String      @unique
+  versionId String?
+  status    FileStatus  @default(PENDING)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  shares    FileShare[]
+
+  @@index([ownerId, createdAt])
+  @@index([status, createdAt])
+}
+
+model FileShare {
+  id         String          @id @default(uuid(7)) @db.Uuid
+  fileId     String          @db.Uuid
+  userId     String?         @db.Uuid
+  groupId    String?         @db.Uuid
+  permission SharePermission
+  expiresAt  DateTime?
+  file       File            @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  user       User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group      Group?          @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([fileId])
+  @@index([userId, fileId])
+  @@index([groupId, fileId])
+  @@index([expiresAt])
+}
+
+model GroupSharePolicy {
+  groupId String @db.Uuid
+  roleId  String @db.Uuid
+  group   Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  role    Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, roleId])
+  @@index([roleId])
+}
