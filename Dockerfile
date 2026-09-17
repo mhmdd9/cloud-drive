@@ -9,6 +9,16 @@ FROM base AS dependencies
 COPY package.json package-lock.json ./
 RUN npm ci --include=dev
 
+FROM base AS development
+RUN chown node:node /app
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY --chown=node:node . .
+RUN npx prisma generate
+ENV NODE_ENV=development
+ENV PORT=3000
+USER node
+EXPOSE 3000
+
 FROM base AS builder
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .

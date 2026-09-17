@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "tsx --test src/modules/auth/password.test.ts src/modules/auth/token.test.ts src/modules/auth/http.test.ts src/modules/auth/identifier.test.ts src/modules/auth/service.test.ts src/modules/auth/seed.test.ts src/modules/files/validation.test.ts src/modules/files/routes.test.ts src/modules/sharing/policy.test.ts",
+    "test": "tsx --test src/modules/auth/password.test.ts src/modules/auth/token.test.ts src/modules/auth/http.test.ts src/modules/auth/identifier.test.ts src/modules/auth/service.test.ts src/modules/auth/seed.test.ts src/modules/files/validation.test.ts src/modules/files/routes.test.ts src/modules/files/storage.test.ts src/modules/sharing/policy.test.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
