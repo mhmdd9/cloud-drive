@@ -24,14 +24,14 @@ export default function LoginPage() {
         credentials: "same-origin",
         cache: "no-store",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: data.get("email"), password: data.get("password") }),
+        body: JSON.stringify({ identifier: data.get("identifier"), password: data.get("password") }),
       });
       if (!response.ok) {
         setStatus("");
         setError(response.status === 429
           ? "تعداد تلاش‌ها بیش از حد مجاز است. پانزده دقیقه دیگر دوباره تلاش کنید."
           : response.status === 400 || response.status === 401
-            ? "ایمیل یا رمز عبور نادرست است."
+            ? "نام کاربری، ایمیل یا رمز عبور نادرست است."
             : "ورود انجام نشد. لطفاً دوباره تلاش کنید.");
         return;
       }
@@ -52,8 +52,8 @@ export default function LoginPage() {
       <form onSubmit={submit} aria-busy={loading} className="flex w-full max-w-sm flex-col gap-5 rounded-2xl border border-zinc-300 p-8 dark:border-zinc-700">
         <h1 className="text-2xl font-semibold">ورود به فضای ابری</h1>
         <p className="text-sm">برای ورود از حساب ایجادشده توسط مدیر استفاده کنید.</p>
-        <label htmlFor="email">ایمیل</label>
-        <input id="email" name="email" type="email" dir="ltr" autoComplete="username" required maxLength={254} disabled={loading} className="rounded border p-3" />
+        <label htmlFor="identifier">نام کاربری یا ایمیل</label>
+        <input id="identifier" name="identifier" type="text" dir="ltr" autoComplete="username" autoCapitalize="none" spellCheck={false} required maxLength={254} disabled={loading} className="rounded border p-3" />
         <label htmlFor="password">رمز عبور</label>
         <input id="password" name="password" type="password" dir="ltr" autoComplete="current-password" required maxLength={1024} disabled={loading} className="rounded border p-3" />
         {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}

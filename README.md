@@ -1,36 +1,316 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# درایو سازمانی — Cloude Drive
 
-## Getting Started
+زیرساخت یک سامانهٔ مدیریت و اشتراک‌گذاری اسناد سازمانی، با رابط فارسی و راست‌به‌چپ و معماری ماژولار. هدف، توسعهٔ تدریجی محصولی با قابلیت افزایش ظرفیت و اجرای مستقل از اینترنت است.
 
-First, run the development server:
+> پروژه فعلاً در مرحلهٔ زیرساخت است و هنوز یک جایگزین کامل Google Drive یا MVP آمادهٔ تحویل نیست. راه‌اندازی ورود محلی به PostgreSQL و Redis نیاز دارد؛ فعال‌سازی آپلود علاوه بر آن به ذخیره‌سازی سازگار و KMS داخلی نیازمند است.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## وضعیت امکانات
+
+| بخش | وضعیت فعلی |
+| --- | --- |
+| ورود | نام کاربری یا ایمیل همراه رمز عبور؛ ساخت حساب اولیه با seed |
+| نشست | JWT با رکورد قابل لغو در Redis، کوکی HttpOnly و بررسی فعال بودن کاربر |
+| نقش و گروه | مدل داده، نقش‌های اولیه و توابع سیاست دسترسی؛ بدون پنل مدیریت |
+| فایل | API فهرست فایل‌های خود کاربر، درخواست آپلود مستقیم و تأیید تکمیل |
+| پردازش | صف BullMQ و ورکر مستقل برای بررسی اطلاعات نسخهٔ آپلودشده |
+| رابط کاربری | صفحهٔ معرفی و فرم ورود؛ هنوز فایل‌منیجر ندارد |
+| اشتراک‌گذاری | مدل داده و توابع سیاست؛ API و رابط اشتراک‌گذاری تکمیل نشده‌اند |
+| نمایش و ویرایش | دانلود، پیش‌نمایش PDF و ویرایش Word/Excel هنوز پیاده‌سازی نشده‌اند |
+
+پوشه‌بندی، حذف و تغییرنام، ثبت‌نام عمومی، بازیابی رمز، MFA، جست‌وجو و آپلود چندقسمتی نیز هنوز پیاده‌سازی نشده‌اند. ورود موفق در حال حاضر کاربر را به صفحهٔ اصلی معرفی پروژه برمی‌گرداند، نه داشبورد فایل‌ها.
+
+## فناوری‌ها و نقش سرویس‌ها
+
+- **Next.js 16 / React 19 / TypeScript / Tailwind CSS 4:** رابط وب و API.
+- **PostgreSQL 17 + Prisma 6:** کاربران، نقش‌ها، گروه‌ها و متادیتای فایل و اشتراک‌گذاری.
+- **Redis 7.4:** نشست‌ها، محدودسازی درخواست‌ها و صف BullMQ.
+- **S3-compatible storage / MinIO:** بایت‌های فایل؛ محتوای فایل در PostgreSQL ذخیره نمی‌شود.
+- **ورکر مستقل:** پردازش پس‌زمینه، جدا از پردازش وب.
+
+آمادگی معماری برای رشد به معنی تضمین ظرفیت چند ده هزار کاربر نیست؛ ظرفیت واقعی باید با سناریوی بار، حجم فایل و زیرساخت مقصد اندازه‌گیری شود.
+
+## پیش‌نیازها
+
+- Node.js **22.13 یا بالاتر از شاخهٔ 22** و npm؛ ایمیج برنامه نیز از Node 22 استفاده می‌کند.
+- Docker Engine / Docker Desktop فعال با Linux containers و Docker Compose v2.
+- دسترسی اینترنت برای نصب وابستگی‌ها، دریافت ایمیج‌ها و build مجاز است.
+- برای راه‌اندازی محلی، آزاد بودن پورت‌های `3000`، `5432` و `6379`؛ برای MinIO پورت‌های `9000` و `9001` نیز لازم‌اند.
+
+دستورات را از ریشهٔ پروژه اجرا کنید. مثال‌های تنظیم محیط برای PowerShell هستند؛ دستورات npm و Docker در سایر سیستم‌ها نیز قابل استفاده‌اند.
+
+## راه‌اندازی سریع dev و ورود
+
+### ۱. نصب و تنظیم محیط
+
+```powershell
+npm ci
+Copy-Item .env.example .env
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+اگر `.env` از قبل وجود دارد، آن را بازنویسی نکنید. این فایل در Git نادیده گرفته می‌شود و نباید منتشر شود. برای هماهنگی Next.js، seed و ورکر، تنظیمات محلی را در `.env` ریشه قرار دهید؛ به بارگذاری `.env.local` توسط همهٔ ابزارها تکیه نکنید.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+مقادیر زیر را در `.env` تکمیل کنید:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| متغیر | مقدار یا قاعده |
+| --- | --- |
+| `POSTGRES_USER` / `POSTGRES_DB` | مقدار پیش‌فرض هر دو `clouddrive` است |
+| `POSTGRES_PASSWORD` | رمز تصادفی مستقل برای PostgreSQL |
+| `DATABASE_URL` | `postgresql://clouddrive:DB_PASSWORD@localhost:5432/clouddrive`؛ جایگزینی رمز الزامی است |
+| `REDIS_PASSWORD` | رمز تصادفی مستقل برای Redis |
+| `REDIS_URL` | `redis://:REDIS_PASSWORD@localhost:6379`؛ رمز باید با سرویس Redis یکسان باشد |
+| `MINIO_ROOT_PASSWORD` | رمز تصادفی مستقل، حداقل ۸ کاراکتر؛ Compose حتی هنگام انتخاب فقط PostgreSQL/Redis این متغیر را اعتبارسنجی می‌کند |
+| `APP_ORIGIN` | برای dev برابر `http://localhost:3000`، بدون اسلش انتهایی یا مسیر |
+| `SESSION_SECRET` | راز تصادفی با حداقل ۳۲ بایت UTF-8 |
+| `ADMIN_EMAIL` | ایمیل معتبر حساب مدیر؛ برای seed همچنان الزامی است |
+| `ADMIN_USERNAME` | نام کاربری دلخواه مدیر؛ مثلاً `admin` |
+| `ADMIN_PASSWORD` | رمز مدیر، حداقل ۱۲ کاراکتر و حداکثر ۱۰۲۴ بایت UTF-8 |
+| `ADMIN_NAME` | نام نمایشی مدیر |
 
-## Learn More
+عبارت‌های `DB_PASSWORD`، `REDIS_PASSWORD` و `replace-me` رمز آماده نیستند. رمزها را واقعاً جایگزین کنید. کاراکترهای ویژه در بخش نام کاربری/رمز URL باید percent-encode شوند؛ رمز خام سرویس را در متغیر مستقل آن قرار دهید.
 
-To learn more about Next.js, take a look at the following resources:
+برای تولید یک مقدار تصادفی، به‌ازای هر راز جداگانه اجرا کنید و خروجی را فقط در محیط امن نگه دارید:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```powershell
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### ۲. آماده‌سازی و اجرای PostgreSQL و Redis
 
-## Deploy on Vercel
+تمام سرویس‌ها `pull_policy: never` دارند؛ بنابراین دریافت ایمیج باید صریحاً در مرحلهٔ آماده‌سازی انجام شود:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```powershell
+docker pull postgres:17
+docker pull redis:7.4
+docker compose up -d postgres redis
+docker compose ps
+docker compose logs --tail 100 postgres redis
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+پیش از مرحلهٔ بعد، منتظر وضعیت `healthy` بمانید. برای ورود نیازی به اجرای MinIO یا ورکر نیست.
+
+### ۳. ساخت جداول و حساب اولیه
+
+```powershell
+npm run db:generate
+npm run db:migrate
+npm run db:seed
+```
+
+- `db:migrate` مهاجرت‌های ثبت‌شده، از جمله ستون نام کاربری، را اعمال می‌کند؛ اجرای آن روی دیتابیس موجود باید پس از پشتیبان‌گیری باشد.
+- `db:seed` حساب مدیر را از متغیرهای `ADMIN_*` می‌سازد؛ رمز پیش‌فرض یا حساب مخفی وجود ندارد.
+- نام کاربری ۳ تا ۳۲ کاراکتر لاتین است؛ با حرف یا عدد شروع می‌شود و سپس حروف، اعداد، `.`, `_`, `-` مجازند. نام کاربری و ایمیل با حذف فاصلهٔ ابتدا/انتها و تبدیل به حروف کوچک ذخیره و بررسی می‌شوند؛ رمز عبور تغییر داده نمی‌شود.
+- اجرای مجدد seed رمز حساب موجود را عوض نمی‌کند. افزودن نام کاربری به حساب موجود فقط برای مدیر فاقد نام کاربری مجاز است؛ نام کاربری متفاوت یا تکراری خطا می‌دهد.
+- کاربران قدیمی بدون نام کاربری همچنان می‌توانند با ایمیل وارد شوند.
+
+پس از provisioning، مقادیر `ADMIN_PASSWORD` را از محیط دائمی برنامه حذف کنید و رمز را در محل امن نگه دارید؛ این مقادیر فقط برای seed لازم‌اند.
+
+### ۴. اجرای وب
+
+```powershell
+npm run dev
+```
+
+صفحهٔ `http://localhost:3000/login` را باز کنید و با `ADMIN_USERNAME` یا `ADMIN_EMAIL` و همان `ADMIN_PASSWORD` وارد شوید. آدرس مرورگر باید دقیقاً با `APP_ORIGIN` یکسان باشد؛ `localhost` و `127.0.0.1` دو origin متفاوت‌اند.
+
+برای بررسی نشست و فهرست فایل‌های خودتان پس از ورود، می‌توانید در همان مرورگر `/api/auth/me` و `/api/files` را باز کنید. نبود فایل در حساب تازه طبیعی است.
+
+## فعال‌سازی ذخیره‌سازی و ورکر
+
+برای اجرای خود سرویس MinIO:
+
+```powershell
+docker pull minio/minio:RELEASE.2025-04-22T22-12-26Z
+docker compose up -d minio
+```
+
+کنسول محلی در `http://localhost:9001` است و از `MINIO_ROOT_USER` و `MINIO_ROOT_PASSWORD` استفاده می‌کند. برای برنامه، کاربر ذخیره‌سازی جداگانه با حداقل دسترسی لازم بسازید؛ از حساب root استفاده نکنید.
+
+> بالا آمدن MinIO به معنی آماده بودن آپلود نیست. Compose فعلی bucket، KMS، TLS، CORS یا سیاست‌های bucket را provision نمی‌کند. سازگاری کامل MinIO موجود با قرارداد فعلی برنامه در آزمون زنده تأیید نشده است.
+
+برای فعال‌سازی آپلود باید ذخیره‌سازی داخلی واقعاً این قرارداد را پشتیبانی کند:
+
+1. bucket خصوصی با versioning فعال و هر چهار پرچم Public Access Block فعال.
+2. رمزنگاری `aws:kms` با KMS داخلی؛ صرف پر کردن `S3_KMS_KEY_ID` کافی نیست.
+3. پشتیبانی از SHA-256 checksum، HEAD همراه checksum، نسخهٔ مشخص و PUT شرطی.
+4. بازگشت شناسهٔ KMS دقیقاً برابر با `S3_KMS_KEY_ID` تنظیم‌شده.
+5. endpoint قابل دسترسی هم برای سرور/ورکر و هم مرورگر کاربر؛ DNS صرفاً کانتینری معمولاً برای مرورگر مناسب نیست.
+6. در آپلود cross-origin، تنظیم CORS با origin مشخص برنامه و متد/هدرهای لازم برای PUT؛ مرورگر هدرهایی مثل `Content-Length` را خودش مدیریت می‌کند.
+7. در production، HTTPS معتبر و مورد اعتماد برای S3؛ غیرفعال کردن اعتبارسنجی TLS راه‌حل نیست.
+
+متغیرهای `S3_ENDPOINT`، `S3_REGION`، `S3_BUCKET`، `S3_ACCESS_KEY_ID`، `S3_SECRET_ACCESS_KEY` و `S3_KMS_KEY_ID` را تنظیم کنید. `MAX_UPLOAD_BYTES=104857600` سقف ۱۰۰ MiB است؛ کد مقدار مثبت معتبر می‌خواهد.
+
+پس از آماده شدن سرویس‌ها و migration، در ترمینال جدا اجرا کنید:
+
+```powershell
+npm run worker
+```
+
+`FILE_WORKER_CONCURRENCY` برای اجرای مستقیم ورکر اختیاری است؛ پیش‌فرض ۲ و سقف ۸ است. این متغیر فعلاً در Compose به کانتینر forward نمی‌شود.
+
+جریان فایل:
+
+```text
+درخواست URL آپلود → رکورد PENDING → PUT مستقیم به ذخیره‌سازی
+→ complete و بررسی HEAD → ثبت نسخهٔ ثابت و PROCESSING
+→ صف Redis → بررسی مجدد توسط ورکر → READY یا REJECTED
+```
+
+`READY` فقط به معنی تأیید اندازه، checksum، نسخه و اطلاعات رمزنگاری است؛ **به معنی اسکن بدافزار یا امن بودن محتوای سند نیست**. ورکر فعلی تبدیل فایل یا تولید پیش‌نمایش انجام نمی‌دهد. ثبت وضعیت در دیتابیس و enqueue اتمیک نیستند؛ تکرار درخواست complete می‌تواند شکست موقت صف را جبران کند، اما reconciler و پاک‌سازی آپلودهای رهاشده هنوز وجود ندارند.
+
+## اجرای production و الزام بدون اینترنت
+
+### محدودهٔ الزام
+
+**نصب و build می‌توانند آنلاین باشند؛ اجرای برنامه و مرورگر کاربران نباید به اینترنت وابسته باشد.** PostgreSQL، Redis، ذخیره‌سازی، KMS و سرویس‌های آتی مثل ویرایشگر Office باید داخل شبکهٔ سازمان باشند. فونت فعلی سیستمی است و منابع رابط از خود برنامه سرو می‌شوند.
+
+در Docker این متغیرها تنظیم شده‌اند و برای اجرای مستقیم نیز در `.env.example` آمده‌اند:
+
+```dotenv
+NEXT_TELEMETRY_DISABLED=1
+CHECKPOINT_DISABLE=1
+AWS_EC2_METADATA_DISABLED=true
+```
+
+اگر ابزار CLI تنظیمات `.env` را بارگذاری نمی‌کند، متغیرها را در محیط همان پردازش نیز export کنید. تولید Prisma Client و نصب npm باید قبل از runtime انجام شده باشند.
+
+### ساخت ایمیج با اینترنت
+
+```powershell
+docker build -t cloude-drive:local .
+```
+
+Dockerfile وابستگی‌ها و Prisma Client را داخل ایمیج Linux آماده و برنامه را build می‌کند؛ در startup نصب وابستگی یا migration انجام نمی‌دهد. ایمیج‌های PostgreSQL، Redis و MinIO نیز باید قبلاً دریافت شده باشند. اگر اجرا روی میزبان دیگری است، ایمیج‌ها باید از قبل به آن منتقل یا در آن دریافت شوند.
+
+### تنظیم runtime
+
+Compose وب و ورکر را تنها با profile به نام `runtime` فعال می‌کند. این مقادیر را در `.env` جدا از URLهای اجرای روی میزبان تنظیم کنید:
+
+| متغیر | کاربرد |
+| --- | --- |
+| `APP_IMAGE` | نام ایمیج آماده، پیش‌فرض `cloude-drive:local` |
+| `CONTAINER_DATABASE_URL` | URL PostgreSQL با hostname سرویس `postgres` و رمز صحیح |
+| `CONTAINER_REDIS_URL` | URL Redis با hostname سرویس `redis` و رمز صحیح |
+| `CONTAINER_S3_ENDPOINT` | endpoint داخلی HTTPS که الزامات دسترسی مرورگر و شبکه را نیز برآورده کند |
+| `APP_ORIGIN` | origin نهایی HTTPS سازمان، بدون مسیر یا اسلش انتهایی |
+
+`localhost` داخل کانتینر به همان کانتینر اشاره می‌کند، نه میزبان و نه PostgreSQL. مقدار `http://minio:9000` برای production فعلی معتبر نیست، چون ذخیره‌سازی HTTPS می‌خواهد.
+
+- قبل از شروع برنامه، migration و seed را مثلاً با Node نصب‌شده روی میزبان و URLهای میزبان طبق راهنمای dev اجرا کنید. تنظیم production را پس از آن اعمال کنید.
+- Compose مقادیر `ADMIN_*` را به کانتینر نمی‌دهد و فایل `.env` نیز داخل ایمیج کپی نمی‌شود؛ اجرای seed داخل کانتینر نیازمند تزریق صریح و امن این متغیرهاست.
+- برای دسترسی مرورگر در production، reverse proxy با HTTPS و گواهی مورد اعتماد سازمان لازم است؛ کوکی نشست در production دارای `Secure` است. reverse proxy و گواهی در این ریپو provision نشده‌اند.
+- شبکهٔ Compose از نوع `internal: true` است. اتصال داخلی سرویس‌های لازم، به‌ویژه S3/KMS، باید در استقرار نهایی طراحی شود؛ این شبکه به‌طور پیش‌فرض دسترسی به سرویس دلخواه در LAN را تضمین نمی‌کند.
+- تمام پورت‌های منتشرشده روی `127.0.0.1` میزبان‌اند. دسترسی سایر سیستم‌ها نیازمند ingress کنترل‌شده است؛ دیتابیس و Redis را عمومی نکنید.
+
+پس از آماده‌سازی موارد بالا:
+
+```powershell
+docker compose --profile runtime config --quiet
+docker compose --profile runtime up -d
+docker compose --profile runtime ps
+docker compose --profile runtime logs --tail 100 web worker
+```
+
+این دستورات deployment کامل را از صفر provision نمی‌کنند. برای بالا آوردن فقط وب همراه PostgreSQL/Redis می‌توانید سرویس‌ها را صریح انتخاب کنید:
+
+```powershell
+docker compose --profile runtime up -d postgres redis web
+```
+
+اجرای مستقیم production روی میزبان نیز پس از build ممکن است:
+
+```powershell
+npm run build
+npm start
+```
+
+وب/ورکری که روی میزبان اجرا می‌شوند مشمول جداسازی شبکهٔ Docker نیستند. منع خروج اینترنت باید در شبکه یا firewall مقصد نیز اعمال شود؛ `internal: true` یا خاموش کردن telemetry به‌تنهایی اثبات آفلاین بودن کل محصول نیست.
+
+### معیار پذیرش آفلاین
+
+پس از آماده‌سازی آنلاین، با خروجی اینترنت مسدود و ارتباط داخلی برقرار، ورود، نشست، آپلود، صف و ورکر و منابع مرورگر باید بررسی شوند. نمایش و ویرایش نیز پس از پیاده‌سازی به این آزمون افزوده می‌شوند. آزمون کامل end-to-end آفلاین هنوز تأیید نشده است؛ عبور تست‌های mock یا health جای آن را نمی‌گیرد.
+
+## APIهای فعلی
+
+| متد | مسیر | کاربرد |
+| --- | --- | --- |
+| GET | `/api/health` | liveness عمومی؛ فقط `{ "status": "ok" }` |
+| POST | `/api/auth/login` | ورود و تنظیم کوکی نشست |
+| POST | `/api/auth/logout` | لغو نشست فعلی |
+| GET | `/api/auth/me` | هویت و نام نقش‌های کاربر واردشده |
+| GET | `/api/files?cursor=<uuid>` | فایل‌های خود کاربر، صفحه‌های ۵۰تایی؛ اندازه به‌صورت رشته |
+| POST | `/api/files/uploads` | ساخت رکورد و URL آپلود با اعتبار ۳۰۰ ثانیه |
+| POST | `/api/files/:id/complete` | تأیید نسخه و ارسال به صف |
+
+تمام POSTهای فعلی، `Origin` مطابق `APP_ORIGIN` می‌خواهند؛ درخواست‌های JSON باید `Content-Type: application/json` داشته باشند. حد بدنهٔ JSON، ۱۶ KiB است. مسیرهای محافظت‌شده به کوکی نشست نیاز دارند.
+
+نمونهٔ بدنهٔ ورود، با مقادیر حساب خودتان:
+
+```json
+{
+  "identifier": "admin",
+  "password": "YOUR_ADMIN_PASSWORD"
+}
+```
+
+به‌جای `identifier` می‌توان فقط یکی از `username` یا `email` را فرستاد؛ ارسال هم‌زمان چند شناسه یا فیلد اضافه پذیرفته نیست. ورود حداکثر ۱۰ تلاش در پنجرهٔ ۱۵ دقیقه‌ای برای شناسه و حساب دارد؛ تلاش موفق نیز شمارش می‌شود. نشست ۸ ساعت اعتبار دارد.
+
+آپلود، فیلدهای `name`، `mimeType`، `size` و `checksum` می‌گیرد. checksum باید Base64 استاندارد خروجی SHA-256 باشد، نه hex؛ فایل صفر بایتی مجاز نیست. آغاز آپلود به ۲۰ درخواست در دقیقه برای هر کاربر محدود است. هنوز رابط کاربری ارسال فایل وجود ندارد.
+
+## دستورات توسعه و آزمون
+
+| دستور | کاربرد |
+| --- | --- |
+| `npm run dev` | وب در حالت توسعه |
+| `npm run build` | ساخت production |
+| `npm start` | اجرای build آماده |
+| `npm run worker` | اجرای ورکر مستقل |
+| `npm run db:generate` | تولید Prisma Client |
+| `npm run db:migrate` | اعمال migrationهای ثبت‌شده، نه تولید migration جدید |
+| `npm run db:seed` | provisioning مدیر و نقش‌های اولیه |
+| `npm test` | تست‌های واحد و قرارداد handlerها |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | تولید typeهای Next و بررسی TypeScript |
+
+تست‌های سرویس‌ها از mock استفاده می‌کنند و به اجرای Docker نیاز ندارند. عبور آن‌ها اتصال واقعی PostgreSQL/Redis/S3 یا ظرفیت سیستم را تأیید نمی‌کند. `/api/health` نیز دیتابیس، Redis، migration، ذخیره‌سازی یا ورکر را بررسی نمی‌کند.
+
+## ساختار پروژه
+
+```text
+src/app/                 صفحات و Route Handlerها
+src/lib/                 اتصال دیتابیس، Redis، S3، صف و ابزار HTTP
+src/modules/auth/        اعتبارسنجی هویت، رمز، نشست و محدودسازی ورود
+src/modules/files/       اعتبارسنجی و پردازش فایل
+src/modules/sharing/     توابع سیاست اشتراک‌گذاری
+src/modules/admin/       بررسی مجوز مدیریتی
+src/workers/             نقطهٔ ورود ورکر مستقل
+prisma/schema.prisma     مدل داده
+prisma/migrations/       migrationهای نسخه‌بندی‌شده
+prisma/seed.ts           provisioning حساب مدیر
+compose.yaml             سرویس‌های محلی و profile اجرای کانتینری
+Dockerfile               ساخت ایمیج وب و ورکر
+```
+
+برای تغییر کد Next.js، دستورالعمل `AGENTS.md` و مستندات نسخهٔ نصب‌شده در `node_modules/next/dist/docs/` را بررسی کنید.
+
+## نگهداری، امنیت و رفع اشکال
+
+| نشانه | بررسی پیشنهادی |
+| --- | --- |
+| خطای ارتباط Docker | فعال بودن Docker Desktop و خروجی `docker info` |
+| image پیدا نمی‌شود | `pull_policy: never` است؛ ایمیج دقیق را در مرحلهٔ آنلاین pull یا build کنید |
+| خطای متغیر Compose | مقادیر موردنیاز `.env`، از جمله `MINIO_ROOT_PASSWORD` را تکمیل کنید |
+| خطای اتصال PostgreSQL/Redis | health سرویس، پورت، رمز و تفاوت URL میزبان/کانتینر |
+| خطای جدول یا ستون username | اعمال `npm run db:migrate` و تولید مجدد Client |
+| seed خطا می‌دهد | متغیرهای مدیر، دسترسی DB، یکتایی username و وضعیت حساب موجود |
+| ورود 403 | تطابق دقیق آدرس مرورگر و `APP_ORIGIN` |
+| ورود 429 | پایان پنجرهٔ محدودسازی ورود را منتظر بمانید |
+| ورود موفق ولی نشست ماندگار نیست | HTTPS production، کوکی مرورگر، Redis و ثابت بودن `SESSION_SECRET` بین نمونه‌های وب |
+| آپلود 500 یا ورکر متوقف است | تنظیم S3/KMS، HTTPS، دسترسی داخلی و سازگاری واقعی عملیات storage؛ خطاهای API عمداً جزئیات حساس را نمایش نمی‌دهند |
+
+- پیش از migration یا ارتقا، از PostgreSQL، داده‌ها و نسخه‌های object storage و کلیدهای KMS پشتیبان بگیرید و بازیابی را آزمایش کنید. حذف کلیدهای رمزنگاری می‌تواند فایل‌ها را غیرقابل بازیابی کند.
+- volumeهای Compose داده را نگه می‌دارند؛ `docker compose --profile runtime down` برای توقف و حذف کانتینرهاست، نه حذف volumeها. از افزودن `-v` برای دادهٔ واقعی خودداری کنید.
+- تغییر رمز PostgreSQL در `.env`، رمز دیتابیسِ از قبل ساخته‌شده در volume را خودکار عوض نمی‌کند.
+- رمزهای کاربران با scrypt هش می‌شوند؛ این با رمزنگاری همهٔ اطلاعات دیتابیس متفاوت است. رمزنگاری فیلدهای حساس PostgreSQL و رمزنگاری دیسک/backup هنوز در این پروژه provision نشده است.
+- رمزنگاری فایل فعلی از نوع server-side در storage است، نه end-to-end؛ سرویس‌های مجاز امکان دسترسی به محتوای رمزگشایی‌شده دارند.
+- TLS، مدیریت/چرخش کلید، گواهی داخلی، backup، مانیتورینگ و اسکن بدافزار باید پیش از استفادهٔ عملیاتی تکمیل شوند. کلیدها و رازها را در Git یا لاگ قرار ندهید؛ صرف وجود ignore rule تضمین کافی نیست.
+- بررسی امنیتی وابستگی‌ها را در مرحلهٔ آماده‌سازی آنلاین با `npm audit` انجام دهید. در بررسی قبلی، هشدار زنجیرهٔ وابستگی Prisma ثبت شده بود؛ این README ادعای رفع آن را ندارد. ارتقای ناسازگار را با `--force` بدون بررسی انجام ندهید.

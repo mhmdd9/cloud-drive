@@ -2,24 +2,43 @@ import "dotenv/config";
 import { z } from "zod";
 import { getDb } from "../src/lib/db";
 import { hashPassword } from "../src/modules/auth/password";
+import { emailSchema, passwordSchema, usernameSchema } from "../src/modules/auth/identifier";
 
 async function main() {
   const result = z.object({
-    ADMIN_EMAIL: z.email().transform((email) => email.toLowerCase()),
-    ADMIN_PASSWORD: z.string().min(12),
+    ADMIN_EMAIL: emailSchema,
+    ADMIN_USERNAME: z.preprocess((value) => typeof value === "string" && value.trim() === "" ? undefined : value, usernameSchema.optional()),
+    ADMIN_PASSWORD: passwordSchema.refine((value) => value.length >= 12),
     ADMIN_NAME: z.string().trim().min(1),
   }).safeParse(process.env);
 
   if (!result.success) {
-    throw new Error("Valid ADMIN_EMAIL, ADMIN_PASSWORD (at least 12 characters), and ADMIN_NAME are required.");
+    throw new Error("Valid administrator settings are required.");
   }
 
-  const { ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_NAME } = result.data;
+  const { ADMIN_EMAIL, ADMIN_USERNAME, ADMIN_PASSWORD, ADMIN_NAME } = result.data;
   const db = getDb();
-  const existing = await db.user.findUnique({ where: { email: ADMIN_EMAIL } });
-  const passwordHash = existing ? undefined : await hashPassword(ADMIN_PASSWORD);
 
   await db.$transaction(async (tx) => {
+    const existing = await tx.user.findUnique({
+      where: { email: ADMIN_EMAIL },
+      include: { roles: { include: { role: true } } },
+    });
+    if (existing && ADMIN_USERNAME !== undefined) {
+      if (!existing.roles.some(({ role }) => role.name === "admin")) {
+        throw new Error("Existing account is not an administrator");
+      }
+      if (existing.username !== null && existing.username !== ADMIN_USERNAME) {
+        throw new Error("Existing administrator has a different username");
+      }
+      if (existing.username === null) {
+        const updated = await tx.user.updateMany({
+          where: { id: existing.id, username: null, roles: { some: { role: { name: "admin" } } } },
+          data: { username: ADMIN_USERNAME },
+        });
+        if (updated.count !== 1) throw new Error("Administrator username could not be assigned");
+      }
+    }
     const admin = await tx.role.upsert({
       where: { name: "admin" },
       create: { name: "admin", permissions: ["users.manage", "groups.manage"] },
@@ -34,16 +53,15 @@ async function main() {
       });
     }
 
-    if (passwordHash !== undefined) {
-      await tx.user.upsert({
-        where: { email: ADMIN_EMAIL },
-        create: {
+    if (!existing) {
+      await tx.user.create({
+        data: {
           email: ADMIN_EMAIL,
+          username: ADMIN_USERNAME,
           name: ADMIN_NAME,
-          passwordHash,
+          passwordHash: await hashPassword(ADMIN_PASSWORD),
           roles: { create: { roleId: admin.id } },
         },
-        update: {},
       });
     }
   });

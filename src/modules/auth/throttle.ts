@@ -16,8 +16,17 @@ redis.call('PEXPIRE', KEYS[1], window)
 return 1
 `;
 
-export async function throttleLogin(email: string): Promise<void> {
-  const hash = createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
-  const allowed = await getRedis().eval(throttleScript, 1, `auth:login:${hash}`, randomBytes(16).toString("hex"));
+async function throttle(key: string): Promise<void> {
+  const allowed = await getRedis().eval(throttleScript, 1, key, randomBytes(16).toString("hex"));
   if (allowed !== 1) throw new ApiError(429, "Too many login attempts. Try again later.");
+}
+
+export async function throttleLogin(identifier: string): Promise<void> {
+  const hash = createHash("sha256").update(identifier.trim().toLowerCase()).digest("hex");
+  await throttle(`auth:login:${hash}`);
+}
+
+export async function throttleLoginAccount(userId: string): Promise<void> {
+  const hash = createHash("sha256").update(userId).digest("hex");
+  await throttle(`auth:login:account:${hash}`);
 }
