@@ -3,7 +3,8 @@ import { requireUser } from "@/modules/auth/session";
 import { ApiError, apiError, assertSameOrigin, readJson } from "@/lib/http";
 import { getDb } from "@/lib/db";
 import { createStorage, presignUpload } from "@/lib/storage";
-import { createObjectKey, maxUploadBytes, uploadSchema } from "@/modules/files/validation";
+import { createObjectKey, uploadSchema } from "@/modules/files/validation";
+import { getConfiguredMaxUploadBytes } from "@/modules/admin/settings";
 import { limitUploadRequests } from "@/modules/files/rate-limit";
 
 export const runtime = "nodejs";
@@ -13,7 +14,7 @@ export async function POST(request: Request) {
     assertSameOrigin(request);
     const user = await requireUser();
     await limitUploadRequests(user.id);
-    const parsed = uploadSchema(maxUploadBytes()).safeParse(await readJson(request));
+    const parsed = uploadSchema(await getConfiguredMaxUploadBytes()).safeParse(await readJson(request));
     if (!parsed.success) throw new ApiError(400, "Invalid upload metadata");
     const input = parsed.data;
     const id = uuidv7();

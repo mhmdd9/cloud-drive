@@ -13,6 +13,7 @@ type DriveFile = {
   status: "PENDING" | "PROCESSING" | "READY" | "REJECTED";
   createdAt: string;
   updatedAt: string;
+  deletedAt: string | null;
 };
 
 const statusLabels: Record<DriveFile["status"], string> = {
@@ -63,13 +64,15 @@ export default function DrivePage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [trashView, setTrashView] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  async function loadDrive() {
+  async function loadDrive(trash = trashView) {
     setLoading(true);
     try {
       const [meResponse, filesResponse] = await Promise.all([
         fetch("/api/auth/me", { cache: "no-store" }),
-        fetch("/api/files", { cache: "no-store" }),
+        fetch(`/api/files${trash ? "?trash=true" : ""}`, { cache: "no-store" }),
       ]);
       if (meResponse.status === 401 || filesResponse.status === 401) {
         router.replace("/login");
@@ -87,7 +90,7 @@ export default function DrivePage() {
     }
   }
 
-  useEffect(() => { void loadDrive(); }, []);
+  useEffect(() => { void loadDrive(trashView); }, [trashView]);
 
   async function upload(file: File) {
     setUploading(true);
@@ -111,7 +114,7 @@ export default function DrivePage() {
       const completeResponse = await fetch(`/api/files/${uploadData.fileId}/complete`, { method: "POST" });
       if (!completeResponse.ok) throw new Error("complete");
       setMessage("فایل با موفقیت اضافه شد.");
-      await loadDrive();
+      await loadDrive(trashView);
     } catch {
       setError("آپلود فایل انجام نشد. حجم یا نوع فایل را بررسی کنید.");
       setMessage("");
@@ -121,9 +124,32 @@ export default function DrivePage() {
     }
   }
 
+  async function restoreFile(id: string) {
+    setDeletingId(id); setError("");
+    try {
+      const response = await fetch(`/api/files/${id}/restore`, { method: "POST" });
+      if (!response.ok) throw new Error("بازیابی فایل انجام نشد.");
+      await loadDrive(true);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "بازیابی فایل انجام نشد.");
+    } finally { setDeletingId(null); }
+  }
+
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.replace("/login");
+  }
+
+  async function deleteFile(id: string) {
+    if (!window.confirm("این فایل به سطل زباله منتقل شود؟")) return;
+    setDeletingId(id); setError("");
+    try {
+      const response = await fetch(`/api/files/${id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("حذف فایل انجام نشد.");
+      await loadDrive();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "حذف فایل انجام نشد.");
+    } finally { setDeletingId(null); }
   }
 
   const filteredFiles = useMemo(() => files.filter((file) => file.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())), [files, search]);
@@ -140,6 +166,8 @@ export default function DrivePage() {
           </Link>
           <nav className="mt-12 space-y-2 text-sm">
             <Link href="/drive" className="flex items-center gap-3 rounded-xl bg-blue-50 px-4 py-3 font-bold text-blue-700"><span>▦</span> فایل‌های من</Link>
+            <button onClick={() => setTrashView(true)} className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-right transition ${trashView ? "bg-blue-50 font-bold text-blue-700" : "text-slate-600 hover:bg-slate-50"}`}><span>♲</span> سطل زباله</button>
+            {user?.roles.includes("admin") && <Link href="/admin" className="flex items-center gap-3 rounded-xl px-4 py-3 text-slate-600 transition hover:bg-slate-50"><span>⚙</span> مدیریت سامانه</Link>}
             <span className="flex cursor-not-allowed items-center gap-3 rounded-xl px-4 py-3 text-slate-400"><span>♧</span> اشتراک‌گذاری</span>
             <span className="flex cursor-not-allowed items-center gap-3 rounded-xl px-4 py-3 text-slate-400"><span>⚙</span> تنظیمات</span>
           </nav>
@@ -171,10 +199,10 @@ export default function DrivePage() {
           </section>
 
           <section className="mt-8">
-            <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><h2 className="text-lg font-bold">فایل‌های اخیر</h2><div className="relative"><span className="pointer-events-none absolute right-3 top-2.5 text-slate-400">⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="جست‌وجوی فایل" className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pr-9 pl-4 text-sm outline-none transition focus:border-blue-500 sm:w-64" /></div></div>
+            <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><h2 className="text-lg font-bold">{trashView ? "سطل زباله" : "فایل‌های اخیر"}</h2><div className="relative"><span className="pointer-events-none absolute right-3 top-2.5 text-slate-400">⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="جست‌وجوی فایل" className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pr-9 pl-4 text-sm outline-none transition focus:border-blue-500 sm:w-64" /></div></div>
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-              <div className="hidden grid-cols-[minmax(0,2fr)_1fr_1fr_110px] gap-4 border-b border-slate-100 px-5 py-3 text-xs font-bold text-slate-400 sm:grid"><span>نام فایل</span><span>حجم</span><span>آخرین تغییر</span><span>وضعیت</span></div>
-              {loading ? <div className="p-10 text-center text-sm text-slate-500">در حال دریافت فایل‌ها...</div> : filteredFiles.length === 0 ? <div className="p-10 text-center"><p className="font-bold">هنوز فایلی ندارید</p><p className="mt-2 text-sm text-slate-500">با انتخاب فایل، اولین مورد را به فضای ابری اضافه کنید.</p></div> : <div className="divide-y divide-slate-100">{filteredFiles.map((file) => <div key={file.id} className="grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,2fr)_1fr_1fr_110px] sm:items-center sm:gap-4"><div className="flex min-w-0 items-center gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-xl text-blue-600">{fileIcon(file.mimeType)}</span><div className="min-w-0"><p className="truncate text-sm font-bold">{file.name}</p><p className="mt-1 text-xs text-slate-400">{file.mimeType}</p></div></div><span className="text-xs text-slate-500">{formatBytes(Number(file.size))}</span><span className="text-xs text-slate-500">{new Intl.DateTimeFormat("fa-IR", { dateStyle: "medium" }).format(new Date(file.updatedAt))}</span><span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${file.status === "READY" ? "bg-emerald-50 text-emerald-700" : file.status === "REJECTED" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"}`}>{statusLabels[file.status]}</span></div>)}</div>}
+              <div className="hidden grid-cols-[minmax(0,2fr)_1fr_1fr_110px_140px] gap-4 border-b border-slate-100 px-5 py-3 text-xs font-bold text-slate-400 sm:grid"><span>نام فایل</span><span>حجم</span><span>آخرین تغییر</span><span>وضعیت</span><span>عملیات</span></div>
+              {loading ? <div className="p-10 text-center text-sm text-slate-500">در حال دریافت فایل‌ها...</div> : filteredFiles.length === 0 ? <div className="p-10 text-center"><p className="font-bold">{trashView ? "سطل زباله خالی است" : "هنوز فایلی ندارید"}</p><p className="mt-2 text-sm text-slate-500">{trashView ? "فایل‌های حذف‌شده اینجا نمایش داده می‌شوند." : "با انتخاب فایل، اولین مورد را به فضای ابری اضافه کنید."}</p></div> : <div className="divide-y divide-slate-100">{filteredFiles.map((file) => <div key={file.id} className="grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,2fr)_1fr_1fr_110px_140px] sm:items-center sm:gap-4"><div className="flex min-w-0 items-center gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-xl text-blue-600">{fileIcon(file.mimeType)}</span><div className="min-w-0"><p className="truncate text-sm font-bold">{file.name}</p><p className="mt-1 text-xs text-slate-400">{file.mimeType}</p></div></div><span className="text-xs text-slate-500">{formatBytes(Number(file.size))}</span><span className="text-xs text-slate-500">{new Intl.DateTimeFormat("fa-IR", { dateStyle: "medium" }).format(new Date(file.updatedAt))}</span><span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${file.status === "READY" ? "bg-emerald-50 text-emerald-700" : file.status === "REJECTED" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"}`}>{statusLabels[file.status]}</span><div className="flex gap-3">{trashView ? <button disabled={deletingId === file.id} onClick={() => void restoreFile(file.id)} className="text-xs font-bold text-blue-700 disabled:opacity-50">{deletingId === file.id ? "..." : "بازیابی"}</button> : <><>{file.status === "READY" ? <a href={`/api/files/${file.id}/download`} className="text-xs font-bold text-blue-700 hover:text-blue-900">دانلود</a> : <span className="text-xs text-slate-300">—</span>}</><button disabled={deletingId === file.id} onClick={() => void deleteFile(file.id)} className="text-xs font-bold text-red-600 disabled:opacity-50">{deletingId === file.id ? "..." : "حذف"}</button></>}</div></div>)}</div>}
             </div>
             {(message || error) && <p role={error ? "alert" : "status"} className={`mt-3 text-sm ${error ? "text-red-600" : "text-blue-700"}`}>{error || message}</p>}
           </section>

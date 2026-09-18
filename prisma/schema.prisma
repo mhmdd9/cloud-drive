@@ -83,9 +83,11 @@ model File {
   status    FileStatus  @default(PENDING)
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
+  deletedAt DateTime?
   shares    FileShare[]
 
   @@index([ownerId, createdAt])
+  @@index([ownerId, deletedAt])
   @@index([status, createdAt])
 }
 
@@ -114,4 +116,10 @@ model GroupSharePolicy {
 
   @@id([groupId, roleId])
   @@index([roleId])
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
 }

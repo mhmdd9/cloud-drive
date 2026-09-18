@@ -3,6 +3,7 @@ import {
   GetBucketPolicyCommand,
   GetBucketVersioningCommand,
   GetPublicAccessBlockCommand,
+  GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -138,6 +139,26 @@ export async function presignUpload(storage: Storage, input: { objectKey: string
       unhoistableHeaders: new Set(Object.keys(headers).filter((name) => name.startsWith("x-amz-"))),
     });
     return { url, headers, expiresIn: 300 };
+  } finally {
+    signer.destroy();
+  }
+}
+
+export async function presignDownload(storage: Storage, input: { objectKey: string; versionId: string; fileName: string }) {
+  const signer = new S3Client({
+    endpoint: storage.publicEndpoint,
+    region: storage.client.config.region,
+    credentials: storage.client.config.credentials,
+    forcePathStyle: true,
+    maxAttempts: 3,
+  });
+  try {
+    return getSignedUrl(signer, new GetObjectCommand({
+      Bucket: storage.bucket,
+      Key: input.objectKey,
+      VersionId: input.versionId,
+      ResponseContentDisposition: `attachment; filename*=UTF-8''${encodeURIComponent(input.fileName)}`,
+    }), { expiresIn: 300 });
   } finally {
     signer.destroy();
   }
