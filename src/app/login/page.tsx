@@ -36,7 +36,7 @@ export default function LoginPage() {
         return;
       }
       setStatus("ورود موفق بود. در حال انتقال...");
-      router.replace("/");
+      router.replace("/drive");
       router.refresh();
     } catch {
       setStatus("");
