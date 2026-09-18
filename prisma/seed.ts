@@ -53,6 +53,22 @@ async function main() {
       });
     }
 
+    const organization = await tx.group.upsert({
+      where: { name: "organization" },
+      create: { name: "organization" },
+      update: {},
+    });
+    const roles = await tx.role.findMany({ select: { id: true } });
+    await tx.groupSharePolicy.createMany({
+      data: roles.map((role) => ({ groupId: organization.id, roleId: role.id })),
+      skipDuplicates: true,
+    });
+    const users = await tx.user.findMany({ select: { id: true } });
+    await tx.groupMember.createMany({
+      data: users.map((user) => ({ groupId: organization.id, userId: user.id })),
+      skipDuplicates: true,
+    });
+
     if (!existing) {
       await tx.user.create({
         data: {

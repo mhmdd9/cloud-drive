@@ -44,8 +44,9 @@ export async function POST(request: Request) {
     if (duplicate) throw new ApiError(409, "Email or username is already in use");
     const roles = await db.role.findMany({ where: { name: { in: input.roles } }, select: { id: true, name: true } });
     if (roles.length !== new Set(input.roles).size) throw new ApiError(400, "Unknown role");
+    const organization = await db.group.findUnique({ where: { name: "organization" }, select: { id: true } });
     const user = await db.user.create({
-      data: { name: input.name, email: input.email, username: input.username ?? null, passwordHash: await hashPassword(input.password), roles: { create: roles.map((role) => ({ roleId: role.id })) } },
+      data: { name: input.name, email: input.email, username: input.username ?? null, passwordHash: await hashPassword(input.password), roles: { create: roles.map((role) => ({ roleId: role.id })) }, ...(organization ? { memberships: { create: { groupId: organization.id } } } : {}) },
       select: { id: true, name: true, email: true, username: true, active: true, createdAt: true, roles: { include: { role: { select: { name: true } } } } },
     });
     return Response.json({ user: serializeUser(user) }, { status: 201, headers: { "Cache-Control": "no-store" } });
