@@ -82,6 +82,22 @@ export default function DrivePage() {
   const [identityStatus, setIdentityStatus] = useState<IdentityStatus | "loading" | "error">("loading");
   const [confidentialUpload, setConfidentialUpload] = useState(false);
 
+  async function downloadFile(file: DriveFile) {
+    try {
+      const response = await fetch(`/api/files/${file.id}/download`);
+      if (!response.ok) throw new Error("دانلود فایل انجام نشد.");
+      if (file.encryptionMode !== "CONFIDENTIAL") { window.location.href = `/api/files/${file.id}/download`; return; }
+      const data = await response.json() as { url: string; encryptedFileKey: string; iv: string; mimeType: string; name: string };
+      const encrypted = await (await fetch(data.url)).arrayBuffer();
+      const plain = await decryptConfidentialFile(encrypted, data.encryptedFileKey, data.iv);
+      const anchor = document.createElement("a");
+      anchor.href = URL.createObjectURL(new Blob([plain], { type: data.mimeType }));
+      anchor.download = data.name;
+      anchor.click();
+      URL.revokeObjectURL(anchor.href);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "دانلود فایل انجام نشد."); }
+  }
+
   useEffect(() => {
     const handleConfidentialDownload = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
@@ -222,22 +238,6 @@ export default function DrivePage() {
       if (!response.ok) throw new Error((await response.json()).error || "ساخت لینک انجام نشد.");
       const result = await response.json(); setShareLink(result.link.url); setShareLinkId(result.link.id);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "ساخت لینک انجام نشد."); } finally { setShareBusy(false); }
-  }
-
-  async function downloadFile(file: DriveFile) {
-    try {
-      const response = await fetch(`/api/files/${file.id}/download`);
-      if (!response.ok) throw new Error("دانلود فایل انجام نشد.");
-      if (file.encryptionMode !== "CONFIDENTIAL") { window.location.href = `/api/files/${file.id}/download`; return; }
-      const data = await response.json() as { url: string; encryptedFileKey: string; iv: string; mimeType: string; name: string };
-      const encrypted = await (await fetch(data.url)).arrayBuffer();
-      const plain = await decryptConfidentialFile(encrypted, data.encryptedFileKey, data.iv);
-      const anchor = document.createElement("a");
-      anchor.href = URL.createObjectURL(new Blob([plain], { type: data.mimeType }));
-      anchor.download = data.name;
-      anchor.click();
-      URL.revokeObjectURL(anchor.href);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "دانلود فایل انجام نشد."); }
   }
 
   const filteredFiles = useMemo(() => files.filter((file) => file.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())), [files, search]);
