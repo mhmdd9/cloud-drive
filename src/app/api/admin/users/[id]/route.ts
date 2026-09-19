@@ -5,6 +5,7 @@ import { requireUser } from "@/modules/auth/session";
 import { requirePermission } from "@/modules/admin/service";
 import { emailSchema, passwordSchema, usernameSchema } from "@/modules/auth/identifier";
 import { hashPassword } from "@/modules/auth/password";
+import { auditContext, recordAudit } from "@/modules/audit/service";
 
 export const runtime = "nodejs";
 
@@ -45,6 +46,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       }
       return updated;
     });
+    await recordAudit({ actorId: actor.id, action: "USER_UPDATED", entityType: "User", entityId: id, metadata: { changedFields: Object.keys(input), rolesChanged: Boolean(roles) }, ...auditContext(request) });
     return Response.json({ user }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return apiError(error);

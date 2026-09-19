@@ -6,6 +6,7 @@ import { createStorage, presignUpload } from "@/lib/storage";
 import { createObjectKey, uploadSchema } from "@/modules/files/validation";
 import { getConfiguredMaxUploadBytes } from "@/modules/admin/settings";
 import { limitUploadRequests } from "@/modules/files/rate-limit";
+import { auditContext, recordAudit } from "@/modules/audit/service";
 
 export const runtime = "nodejs";
 
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
           status: "PENDING",
         },
       });
+      await recordAudit({ actorId: user.id, action: "FILE_UPLOAD_INITIATED", entityType: "File", entityId: id, metadata: { name: input.name, size: input.size, encryptionMode: input.encryptionMode }, ...auditContext(request) });
       return Response.json({ fileId: id, ...upload }, { status: 201, headers: { "Cache-Control": "no-store" } });
     } finally {
       storage.client.destroy();

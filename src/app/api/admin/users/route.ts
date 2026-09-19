@@ -5,6 +5,7 @@ import { requireUser } from "@/modules/auth/session";
 import { requirePermission } from "@/modules/admin/service";
 import { emailSchema, passwordSchema, usernameSchema } from "@/modules/auth/identifier";
 import { hashPassword } from "@/modules/auth/password";
+import { auditContext, recordAudit } from "@/modules/audit/service";
 
 export const runtime = "nodejs";
 
@@ -49,6 +50,7 @@ export async function POST(request: Request) {
       data: { name: input.name, email: input.email, username: input.username ?? null, passwordHash: await hashPassword(input.password), roles: { create: roles.map((role) => ({ roleId: role.id })) }, ...(organization ? { memberships: { create: { groupId: organization.id } } } : {}) },
       select: { id: true, name: true, email: true, username: true, active: true, createdAt: true, roles: { include: { role: { select: { name: true } } } } },
     });
+    await recordAudit({ actorId: actor.id, action: "USER_CREATED", entityType: "User", entityId: user.id, metadata: { roles: input.roles }, ...auditContext(request) });
     return Response.json({ user: serializeUser(user) }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return apiError(error);

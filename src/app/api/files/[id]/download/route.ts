@@ -3,10 +3,11 @@ import { ApiError, apiError } from "@/lib/http";
 import { getDb } from "@/lib/db";
 import { createStorage, presignDownload } from "@/lib/storage";
 import { fileIdSchema, validVersionId } from "@/modules/files/validation";
+import { auditContext, recordAudit } from "@/modules/audit/service";
 
 export const runtime = "nodejs";
 
-export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser();
     const { id } = await context.params;
@@ -26,6 +27,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
         versionId: file.versionId,
         fileName: file.name,
       });
+      await recordAudit({ actorId: user.id, action: "FILE_DOWNLOADED", entityType: "File", entityId: id, metadata: { encryptionMode: file.encryptionMode }, ...auditContext(request) });
       if (file.encryptionMode === "CONFIDENTIAL") {
         if (!file.encryptionIv || !file.ownerEncryptedFileKey) throw new ApiError(409, "Confidential file key is unavailable");
         return Response.json({ encrypted: true, url, name: file.name, mimeType: file.mimeType, iv: file.encryptionIv, encryptedFileKey: file.ownerEncryptedFileKey, originalSize: file.originalSize?.toString() ?? null }, { headers: { "Cache-Control": "no-store" } });

@@ -2,6 +2,7 @@ import { requireUser } from "@/modules/auth/session";
 import { ApiError, apiError, assertSameOrigin } from "@/lib/http";
 import { getDb } from "@/lib/db";
 import { fileIdSchema } from "@/modules/files/validation";
+import { auditContext, recordAudit } from "@/modules/audit/service";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
       data: { deletedAt: new Date() },
     });
     if (result.count !== 1) throw new ApiError(404, "File not found");
+    await recordAudit({ actorId: user.id, action: "FILE_DELETED", entityType: "File", entityId: id, ...auditContext(request) });
     return Response.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return apiError(error);

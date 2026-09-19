@@ -4,6 +4,7 @@ import { getDb } from "@/lib/db";
 import { requireUser } from "@/modules/auth/session";
 import { canGrantShare, type SharePermission } from "@/modules/sharing/policy";
 import { identifierSchema } from "@/modules/auth/identifier";
+import { auditContext, recordAudit } from "@/modules/audit/service";
 
 export const runtime = "nodejs";
 
@@ -60,6 +61,7 @@ export async function POST(request: Request) {
     if (expiresAt && expiresAt <= new Date()) throw new ApiError(400, "Expiration must be in the future");
     const existing = await db.fileShare.findFirst({ where: { fileId: input.fileId, userId: recipient.id } });
     const share = existing ? await db.fileShare.update({ where: { id: existing.id }, data: { permission: input.permission, expiresAt, encryptedFileKey: input.encryptedFileKey ?? null } }) : await db.fileShare.create({ data: { fileId: input.fileId, userId: recipient.id, permission: input.permission, expiresAt, encryptedFileKey: input.encryptedFileKey ?? null } });
+    await recordAudit({ actorId: actor.id, action: existing ? "FILE_SHARE_UPDATED" : "FILE_SHARED", entityType: "FileShare", entityId: share.id, metadata: { fileId: input.fileId, recipientId: recipient.id, permission: input.permission, confidential: file.encryptionMode === "CONFIDENTIAL" }, ...auditContext(request) });
     return Response.json({ share: { id: share.id, permission: share.permission, expiresAt: share.expiresAt } }, { status: existing ? 200 : 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return apiError(error);

@@ -3,6 +3,7 @@ import { apiError, assertSameOrigin, readJson, ApiError } from "@/lib/http";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/modules/auth/session";
 import { createShareToken, hashShareToken } from "@/modules/sharing/links";
+import { auditContext, recordAudit } from "@/modules/audit/service";
 
 export const runtime = "nodejs";
 
@@ -24,6 +25,7 @@ export async function POST(request: Request) {
     if (file.encryptionMode === "CONFIDENTIAL") throw new ApiError(409, "Confidential files require a named recipient");
     const token = createShareToken();
     const link = await getDb().sharedLink.create({ data: { tokenHash: hashShareToken(token), fileId: file.id, ownerId: actor.id, permission: input.permission, expiresAt: new Date(Date.now() + input.expiresInHours * 60 * 60 * 1000) }, select: { id: true, expiresAt: true, permission: true } });
+    await recordAudit({ actorId: actor.id, action: "PUBLIC_LINK_CREATED", entityType: "SharedLink", entityId: link.id, metadata: { fileId: file.id, permission: input.permission, expiresInHours: input.expiresInHours }, ...auditContext(request) });
     const origin = process.env.APP_ORIGIN;
     if (!origin) throw new Error("APP_ORIGIN is required");
     return Response.json({ link: { ...link, url: `${origin}/share/${token}` } }, { status: 201, headers: { "Cache-Control": "no-store" } });

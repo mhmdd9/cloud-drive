@@ -4,6 +4,7 @@ import { getDb } from "@/lib/db";
 import { createStorage, headObject } from "@/lib/storage";
 import { enqueueFile } from "@/lib/queue";
 import { checksumFromObjectKey, fileIdSchema, ObjectVerificationError, verifyObject } from "@/modules/files/validation";
+import { auditContext, recordAudit } from "@/modules/audit/service";
 
 export const runtime = "nodejs";
 
@@ -38,6 +39,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (file.status === "REJECTED") throw new ApiError(409, "File was rejected");
     if (file.status === "PENDING") throw new ApiError(409, "File cannot be completed");
     if (file.status === "PROCESSING") await enqueueFile(file.id);
+    await recordAudit({ actorId: user.id, action: "FILE_UPLOAD_COMPLETED", entityType: "File", entityId: file.id, metadata: { status: file.status }, ...auditContext(request) });
     return Response.json({ fileId: file.id, status: file.status }, {
       status: file.status === "PROCESSING" ? 202 : 200,
       headers: { "Cache-Control": "no-store" },

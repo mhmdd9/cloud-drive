@@ -4,10 +4,11 @@ import { getDb } from "@/lib/db";
 import { requireUser } from "@/modules/auth/session";
 import { createStorage, presignDownload } from "@/lib/storage";
 import { validVersionId } from "@/modules/files/validation";
+import { auditContext, recordAudit } from "@/modules/audit/service";
 
 export const runtime = "nodejs";
 
-export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const actor = await requireUser();
     const { id } = await context.params;
@@ -17,6 +18,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     const storage = createStorage();
     try {
       const url = await presignDownload(storage, { objectKey: share.file.objectKey, versionId: share.file.versionId, fileName: share.file.name });
+      await recordAudit({ actorId: actor.id, action: "SHARED_FILE_DOWNLOADED", entityType: "FileShare", entityId: id, metadata: { fileId: share.file.name, encryptionMode: share.file.encryptionMode }, ...auditContext(request) });
       if (share.file.encryptionMode === "CONFIDENTIAL") {
         if (!share.file.encryptionIv || !share.encryptedFileKey) throw new ApiError(409, "Confidential file key is unavailable");
         return Response.json({ encrypted: true, url, name: share.file.name, mimeType: share.file.mimeType, iv: share.file.encryptionIv, encryptedFileKey: share.encryptedFileKey, originalSize: share.file.originalSize?.toString() ?? null }, { headers: { "Cache-Control": "no-store" } });
