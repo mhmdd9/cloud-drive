@@ -249,7 +249,7 @@ export default function DrivePage() {
       <div className="mx-auto flex min-h-screen max-w-[1500px]">
         <aside className="hidden w-64 shrink-0 border-l border-slate-200 bg-white px-5 py-7 lg:flex lg:flex-col">
           <Link href="/drive" className="flex items-center gap-3 px-2 text-lg font-bold">
-            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-600 text-xl text-white">ک</span>
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20" aria-hidden="true"><svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.9"><path strokeLinecap="round" strokeLinejoin="round" d="M7 18.5h10.2a3.8 3.8 0 0 0 .6-7.55A6.2 6.2 0 0 0 5.85 9.8 4.35 4.35 0 0 0 7 18.5Z" /></svg></span>
             فضای ابری
           </Link>
           <nav className="mt-12 space-y-2 text-sm">
