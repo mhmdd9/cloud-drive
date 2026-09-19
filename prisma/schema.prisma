@@ -20,6 +20,11 @@ enum SharePermission {
   EDIT
 }
 
+enum FileEncryptionMode {
+  NONE
+  CONFIDENTIAL
+}
+
 model User {
   id           String        @id @default(uuid(7)) @db.Uuid
   email        String        @unique
@@ -27,6 +32,8 @@ model User {
   name         String
   passwordHash String
   active       Boolean       @default(true)
+  encryptionPublicKey Json?
+  encryptionKeyCreatedAt DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   roles        UserRole[]
@@ -85,6 +92,10 @@ model File {
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
   deletedAt DateTime?
+  encryptionMode FileEncryptionMode @default(NONE)
+  encryptionIv String?
+  ownerEncryptedFileKey String?
+  originalSize BigInt?
   shares    FileShare[]
   publicLinks SharedLink[]
 
@@ -100,6 +111,7 @@ model FileShare {
   groupId    String?         @db.Uuid
   permission SharePermission
   expiresAt  DateTime?
+  encryptedFileKey String?
   file       File            @relation(fields: [fileId], references: [id], onDelete: Cascade)
   user       User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
   group      Group?          @relation(fields: [groupId], references: [id], onDelete: Cascade)

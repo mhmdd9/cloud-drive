@@ -12,6 +12,7 @@ const createShareSchema = z.strictObject({
   identifier: identifierSchema,
   permission: z.enum(["VIEW", "DOWNLOAD", "EDIT"]),
   expiresAt: z.string().datetime().nullable().optional(),
+  encryptedFileKey: z.string().regex(/^[A-Za-z0-9_-]{342,700}$/).nullable().optional(),
 });
 
 function serializeShare(share: { id: string; permission: SharePermission; expiresAt: Date | null; file: { id: string; name: string; mimeType: string; size: bigint; status: string; owner: { name: string; email: string } }; user?: { name: string; email: string; username: string | null } | null }) {
@@ -43,9 +44,11 @@ export async function POST(request: Request) {
     if (!parsed.success) throw new ApiError(400, "Invalid share data");
     const input = parsed.data;
     const db = getDb();
-    const file = await db.file.findFirst({ where: { id: input.fileId, ownerId: actor.id, deletedAt: null }, select: { id: true, ownerId: true, status: true } });
+    const file = await db.file.findFirst({ where: { id: input.fileId, ownerId: actor.id, deletedAt: null }, select: { id: true, ownerId: true, status: true, encryptionMode: true } });
     if (!file) throw new ApiError(404, "File not found");
     if (file.status !== "READY") throw new ApiError(409, "File is not ready for sharing");
+    if (file.encryptionMode === "CONFIDENTIAL" && !input.encryptedFileKey) throw new ApiError(400, "Confidential sharing requires an encrypted file key");
+    if (file.encryptionMode === "NONE" && input.encryptedFileKey) throw new ApiError(400, "Plain sharing cannot contain an encrypted file key");
     const recipient = await db.user.findFirst({ where: input.identifier.includes("@") ? { email: input.identifier, active: true } : { username: input.identifier, active: true }, select: { id: true, active: true } });
     if (!recipient) throw new ApiError(404, "Recipient not found");
     const actorSnapshot = await db.user.findUnique({ where: { id: actor.id }, select: { active: true, roles: { select: { roleId: true } }, memberships: { select: { groupId: true } } } });
@@ -56,7 +59,7 @@ export async function POST(request: Request) {
     const expiresAt = input.expiresAt ? new Date(input.expiresAt) : null;
     if (expiresAt && expiresAt <= new Date()) throw new ApiError(400, "Expiration must be in the future");
     const existing = await db.fileShare.findFirst({ where: { fileId: input.fileId, userId: recipient.id } });
-    const share = existing ? await db.fileShare.update({ where: { id: existing.id }, data: { permission: input.permission, expiresAt } }) : await db.fileShare.create({ data: { fileId: input.fileId, userId: recipient.id, permission: input.permission, expiresAt } });
+    const share = existing ? await db.fileShare.update({ where: { id: existing.id }, data: { permission: input.permission, expiresAt, encryptedFileKey: input.encryptedFileKey ?? null } }) : await db.fileShare.create({ data: { fileId: input.fileId, userId: recipient.id, permission: input.permission, expiresAt, encryptedFileKey: input.encryptedFileKey ?? null } });
     return Response.json({ share: { id: share.id, permission: share.permission, expiresAt: share.expiresAt } }, { status: existing ? 200 : 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return apiError(error);

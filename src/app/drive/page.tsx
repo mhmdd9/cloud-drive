@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { decryptConfidentialFile, encryptFileForOwner, ensureEncryptionIdentity, type IdentityStatus, wrapOwnerFileKeyForRecipient } from "@/lib/client-crypto";
 
 type User = { name: string; email: string; roles: string[] };
 type DriveFile = {
@@ -14,6 +15,10 @@ type DriveFile = {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  encryptionMode: "NONE" | "CONFIDENTIAL";
+  encryptionIv: string | null;
+  ownerEncryptedFileKey: string | null;
+  originalSize: string | null;
 };
 
 const statusLabels: Record<DriveFile["status"], string> = {
@@ -47,7 +52,7 @@ function initials(name: string) {
   return name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "ک";
 }
 
-async function sha256Base64(file: File) {
+async function sha256Base64(file: Blob) {
   const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
   let binary = "";
   for (const byte of new Uint8Array(digest)) binary += String.fromCharCode(byte);
@@ -74,6 +79,23 @@ export default function DrivePage() {
   const [shareBusy, setShareBusy] = useState(false);
   const [shareFeedback, setShareFeedback] = useState("");
   const [shareFeedbackError, setShareFeedbackError] = useState("");
+  const [identityStatus, setIdentityStatus] = useState<IdentityStatus | "loading" | "error">("loading");
+  const [confidentialUpload, setConfidentialUpload] = useState(false);
+
+  useEffect(() => {
+    const handleConfidentialDownload = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      const anchor = target?.closest<HTMLAnchorElement>('a[href^="/api/files/"][href$="/download"]');
+      if (!anchor) return;
+      const match = anchor.getAttribute("href")?.match(/^\/api\/files\/([^/]+)\/download$/);
+      const file = match ? files.find((item) => item.id === match[1]) : undefined;
+      if (!file || file.encryptionMode !== "CONFIDENTIAL") return;
+      event.preventDefault();
+      void downloadFile(file);
+    };
+    document.addEventListener("click", handleConfidentialDownload);
+    return () => document.removeEventListener("click", handleConfidentialDownload);
+  }, [files]);
 
   async function loadDrive(trash = trashView) {
     setLoading(true);
@@ -100,6 +122,10 @@ export default function DrivePage() {
 
   useEffect(() => { void loadDrive(trashView); }, [trashView]);
 
+  useEffect(() => {
+    void ensureEncryptionIdentity().then(setIdentityStatus).catch(() => setIdentityStatus("error"));
+  }, []);
+
   const hasPendingFiles = files.some((file) => file.status === "PENDING" || file.status === "PROCESSING");
   useEffect(() => {
     if (trashView || !hasPendingFiles) return;
@@ -112,18 +138,20 @@ export default function DrivePage() {
     setError("");
     setMessage("در حال آماده‌سازی فایل...");
     try {
-      const checksum = await sha256Base64(file);
+      const encryptedData = confidentialUpload ? await encryptFileForOwner(file) : null;
+      const uploadBody = encryptedData ? encryptedData.encrypted : file;
+      const checksum = await sha256Base64(uploadBody);
       const metadataResponse = await fetch("/api/files/uploads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: file.name, mimeType: file.type || "application/octet-stream", size: file.size, checksum }),
+        body: JSON.stringify({ name: file.name, mimeType: file.type || "application/octet-stream", size: uploadBody.size, checksum, ...(encryptedData ? { encryptionMode: "CONFIDENTIAL", encryptionIv: encryptedData.iv, ownerEncryptedFileKey: encryptedData.ownerEncryptedFileKey, originalSize: encryptedData.originalSize } : {}) }),
       });
       if (metadataResponse.status === 401) return router.replace("/login");
       if (!metadataResponse.ok) throw new Error("metadata");
       const uploadData = await metadataResponse.json() as { fileId: string; url: string; headers: Record<string, string> };
       setMessage("در حال آپلود فایل...");
       const headers = Object.fromEntries(Object.entries(uploadData.headers).filter(([name]) => name.toLowerCase() !== "content-length"));
-      const putResponse = await fetch(uploadData.url, { method: "PUT", headers, body: file });
+      const putResponse = await fetch(uploadData.url, { method: "PUT", headers, body: uploadBody });
       if (!putResponse.ok) throw new Error("put");
       setMessage("در حال نهایی‌سازی فایل...");
       const completeResponse = await fetch(`/api/files/${uploadData.fileId}/complete`, { method: "POST" });
@@ -172,7 +200,15 @@ export default function DrivePage() {
     if (!shareFile) return;
     setShareBusy(true); setError(""); setMessage(""); setShareFeedback(""); setShareFeedbackError("");
     try {
-      const response = await fetch("/api/shares", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fileId: shareFile.id, identifier: shareIdentifier, permission: sharePermission }) });
+      let encryptedFileKey: string | null = null;
+      if (shareFile.encryptionMode === "CONFIDENTIAL") {
+        if (!shareFile.ownerEncryptedFileKey) throw new Error("کلید فایل محرمانه در دسترس نیست.");
+        const recipientResponse = await fetch(`/api/shares/recipient?identifier=${encodeURIComponent(shareIdentifier)}`, { cache: "no-store" });
+        if (!recipientResponse.ok) throw new Error((await recipientResponse.json()).error || "گیرنده‌ی معتبر پیدا نشد.");
+        const recipientData = await recipientResponse.json() as { recipient: { encryptionPublicKey: JsonWebKey } };
+        encryptedFileKey = await wrapOwnerFileKeyForRecipient(shareFile.ownerEncryptedFileKey, recipientData.recipient.encryptionPublicKey);
+      }
+      const response = await fetch("/api/shares", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fileId: shareFile.id, identifier: shareIdentifier, permission: sharePermission, encryptedFileKey }) });
       if (!response.ok) throw new Error((await response.json()).error || "اشتراک‌گذاری انجام نشد.");
       setMessage("فایل با موفقیت با کاربر به اشتراک گذاشته شد."); setShareIdentifier("");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "اشتراک‌گذاری انجام نشد."); } finally { setShareBusy(false); }
@@ -186,6 +222,22 @@ export default function DrivePage() {
       if (!response.ok) throw new Error((await response.json()).error || "ساخت لینک انجام نشد.");
       const result = await response.json(); setShareLink(result.link.url); setShareLinkId(result.link.id);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "ساخت لینک انجام نشد."); } finally { setShareBusy(false); }
+  }
+
+  async function downloadFile(file: DriveFile) {
+    try {
+      const response = await fetch(`/api/files/${file.id}/download`);
+      if (!response.ok) throw new Error("دانلود فایل انجام نشد.");
+      if (file.encryptionMode !== "CONFIDENTIAL") { window.location.href = `/api/files/${file.id}/download`; return; }
+      const data = await response.json() as { url: string; encryptedFileKey: string; iv: string; mimeType: string; name: string };
+      const encrypted = await (await fetch(data.url)).arrayBuffer();
+      const plain = await decryptConfidentialFile(encrypted, data.encryptedFileKey, data.iv);
+      const anchor = document.createElement("a");
+      anchor.href = URL.createObjectURL(new Blob([plain], { type: data.mimeType }));
+      anchor.download = data.name;
+      anchor.click();
+      URL.revokeObjectURL(anchor.href);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "دانلود فایل انجام نشد."); }
   }
 
   const filteredFiles = useMemo(() => files.filter((file) => file.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())), [files, search]);
@@ -229,6 +281,13 @@ export default function DrivePage() {
             <div className="rounded-2xl border border-slate-200 bg-white p-5"><p className="text-sm text-slate-500">فضای مصرف‌شده</p><p className="mt-3 text-2xl font-bold">{formatBytes(totalSize)}</p><p className="mt-1 text-xs text-slate-400">از فضای سازمانی</p></div>
             <div className="rounded-2xl border border-slate-200 bg-white p-5"><p className="text-sm text-slate-500">فایل‌های آماده</p><p className="mt-3 text-2xl font-bold">{readyCount.toLocaleString("fa-IR")}</p><p className="mt-1 text-xs text-emerald-600">قابل استفاده</p></div>
           </section>
+
+          <section className={`mt-4 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm ${identityStatus === "ready" || identityStatus === "created" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : identityStatus === "needs-recovery" ? "border-amber-200 bg-amber-50 text-amber-800" : identityStatus === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-slate-200 bg-white text-slate-500"}`}>
+            <span className="text-xl">{identityStatus === "ready" || identityStatus === "created" ? "🔒" : identityStatus === "needs-recovery" ? "⚠" : "🛡"}</span>
+            <div><p className="font-bold">هویت امنیتی دستگاه</p><p className="mt-1 text-xs">{identityStatus === "ready" ? "این دستگاه برای انتقال محرمانه آماده است." : identityStatus === "created" ? "کلید امنیتی این دستگاه ساخته و ثبت شد." : identityStatus === "needs-recovery" ? "کلید خصوصی این دستگاه پیدا نشد؛ بازیابی لازم است." : identityStatus === "error" ? "راه‌اندازی هویت امنیتی انجام نشد." : "در حال آماده‌سازی هویت امنیتی..."}</p></div>
+          </section>
+
+          <label className="mt-4 flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={confidentialUpload} onChange={(event) => setConfidentialUpload(event.target.checked)} disabled={uploading || (identityStatus !== "ready" && identityStatus !== "created")} /> انتقال محرمانه برای فایل بعدی</label>
 
           <section className="mt-8 rounded-3xl bg-gradient-to-l from-blue-700 to-blue-600 p-6 text-white shadow-lg shadow-blue-100 sm:p-8">
             <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-center"><div><p className="text-sm text-blue-100">فضای کاری امن شما</p><h2 className="mt-2 text-2xl font-bold">فایل جدیدی اضافه کنید</h2><p className="mt-2 max-w-lg text-sm leading-7 text-blue-100">فایل‌ها را در فضای سازمانی ذخیره کنید و در مراحل بعدی با همکاران خود به اشتراک بگذارید.</p></div><label className={`inline-flex cursor-pointer items-center justify-center rounded-xl bg-white px-5 py-3 text-sm font-bold text-blue-700 shadow-sm transition hover:bg-blue-50 ${uploading ? "pointer-events-none opacity-60" : ""}`}><input ref={inputRef} type="file" className="sr-only" disabled={uploading} onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); }} />{uploading ? "در حال آپلود..." : "+ انتخاب فایل"}</label></div>

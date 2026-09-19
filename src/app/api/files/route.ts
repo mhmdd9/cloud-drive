@@ -19,10 +19,10 @@ export async function GET(request: Request) {
       where: { ownerId: user.id, ...(trash ? { deletedAt: { not: null } } : { deletedAt: null }), ...(cursor ? { id: { lt: cursor } } : {}) },
       orderBy: { id: "desc" },
       take: 50,
-      select: { id: true, name: true, mimeType: true, size: true, status: true, createdAt: true, updatedAt: true, deletedAt: true },
+      select: { id: true, name: true, mimeType: true, size: true, status: true, createdAt: true, updatedAt: true, deletedAt: true, encryptionMode: true, encryptionIv: true, ownerEncryptedFileKey: true, originalSize: true },
     });
     return Response.json({
-      files: files.map((file) => ({ ...file, size: file.size.toString() })),
+      files: files.map((file) => ({ ...file, size: file.size.toString(), originalSize: file.originalSize?.toString() ?? null })),
       nextCursor: files.length === 50 ? files[49].id : null,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {

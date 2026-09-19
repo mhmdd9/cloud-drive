@@ -12,11 +12,15 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     const actor = await requireUser();
     const { id } = await context.params;
     if (!z.uuid().safeParse(id).success) throw new ApiError(404, "Share not found");
-    const share = await getDb().fileShare.findFirst({ where: { id, userId: actor.id, permission: { in: ["DOWNLOAD", "EDIT"] }, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }], file: { deletedAt: null, status: "READY" } }, select: { file: { select: { name: true, objectKey: true, versionId: true } } } });
+    const share = await getDb().fileShare.findFirst({ where: { id, userId: actor.id, permission: { in: ["DOWNLOAD", "EDIT"] }, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }], file: { deletedAt: null, status: "READY" } }, select: { encryptedFileKey: true, file: { select: { name: true, mimeType: true, objectKey: true, versionId: true, encryptionMode: true, encryptionIv: true, originalSize: true } } } });
     if (!share || !validVersionId(share.file.versionId)) throw new ApiError(404, "Share not found or file is not ready");
     const storage = createStorage();
     try {
       const url = await presignDownload(storage, { objectKey: share.file.objectKey, versionId: share.file.versionId, fileName: share.file.name });
+      if (share.file.encryptionMode === "CONFIDENTIAL") {
+        if (!share.file.encryptionIv || !share.encryptedFileKey) throw new ApiError(409, "Confidential file key is unavailable");
+        return Response.json({ encrypted: true, url, name: share.file.name, mimeType: share.file.mimeType, iv: share.file.encryptionIv, encryptedFileKey: share.encryptedFileKey, originalSize: share.file.originalSize?.toString() ?? null }, { headers: { "Cache-Control": "no-store" } });
+      }
       return Response.redirect(url, 302);
     } finally { storage.client.destroy(); }
   } catch (error) {

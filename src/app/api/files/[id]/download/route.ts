@@ -13,7 +13,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     if (!fileIdSchema.safeParse(id).success) throw new ApiError(400, "Invalid file id");
     const file = await getDb().file.findFirst({
       where: { id, ownerId: user.id, deletedAt: null },
-      select: { name: true, objectKey: true, versionId: true, status: true },
+      select: { name: true, mimeType: true, objectKey: true, versionId: true, status: true, encryptionMode: true, encryptionIv: true, ownerEncryptedFileKey: true, originalSize: true },
     });
     if (!file) throw new ApiError(404, "File not found");
     if (file.status !== "READY" || !validVersionId(file.versionId)) {
@@ -26,6 +26,10 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
         versionId: file.versionId,
         fileName: file.name,
       });
+      if (file.encryptionMode === "CONFIDENTIAL") {
+        if (!file.encryptionIv || !file.ownerEncryptedFileKey) throw new ApiError(409, "Confidential file key is unavailable");
+        return Response.json({ encrypted: true, url, name: file.name, mimeType: file.mimeType, iv: file.encryptionIv, encryptedFileKey: file.ownerEncryptedFileKey, originalSize: file.originalSize?.toString() ?? null }, { headers: { "Cache-Control": "no-store" } });
+      }
       return Response.redirect(url, 302);
     } finally {
       storage.client.destroy();

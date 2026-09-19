@@ -19,8 +19,9 @@ export async function POST(request: Request) {
     const parsed = createLinkSchema.safeParse(await readJson(request));
     if (!parsed.success) throw new ApiError(400, "Invalid link data");
     const input = parsed.data;
-    const file = await getDb().file.findFirst({ where: { id: input.fileId, ownerId: actor.id, deletedAt: null, status: "READY" }, select: { id: true } });
+    const file = await getDb().file.findFirst({ where: { id: input.fileId, ownerId: actor.id, deletedAt: null, status: "READY" }, select: { id: true, encryptionMode: true } });
     if (!file) throw new ApiError(404, "File not found or not ready");
+    if (file.encryptionMode === "CONFIDENTIAL") throw new ApiError(409, "Confidential files require a named recipient");
     const token = createShareToken();
     const link = await getDb().sharedLink.create({ data: { tokenHash: hashShareToken(token), fileId: file.id, ownerId: actor.id, permission: input.permission, expiresAt: new Date(Date.now() + input.expiresInHours * 60 * 60 * 1000) }, select: { id: true, expiresAt: true, permission: true } });
     const origin = process.env.APP_ORIGIN;

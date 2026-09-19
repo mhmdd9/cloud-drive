@@ -30,6 +30,10 @@ export async function POST(request: Request) {
           mimeType: input.mimeType,
           size: BigInt(input.size),
           objectKey,
+          encryptionMode: input.encryptionMode,
+          encryptionIv: input.encryptionIv,
+          ownerEncryptedFileKey: input.ownerEncryptedFileKey,
+          originalSize: input.originalSize === undefined ? undefined : BigInt(input.originalSize),
           status: "PENDING",
         },
       });

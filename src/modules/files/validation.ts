@@ -15,6 +15,17 @@ export function uploadSchema(maxBytes: number) {
     mimeType: z.string().max(127).regex(/^[a-zA-Z0-9][a-zA-Z0-9!#$&^_.+-]*\/[a-zA-Z0-9][a-zA-Z0-9!#$&^_.+-]*$/).transform((value) => value.toLowerCase()),
     size: z.number().int().positive().max(maxBytes).refine(Number.isSafeInteger),
     checksum: checksumSchema,
+    encryptionMode: z.enum(["NONE", "CONFIDENTIAL"]).default("NONE"),
+    encryptionIv: z.string().regex(/^[A-Za-z0-9_-]{16}$/).optional(),
+    ownerEncryptedFileKey: z.string().regex(/^[A-Za-z0-9_-]{342,700}$/).optional(),
+    originalSize: z.number().int().positive().max(maxBytes).refine(Number.isSafeInteger).optional(),
+  }).superRefine((value, context) => {
+    if (value.encryptionMode === "CONFIDENTIAL" && (!value.encryptionIv || !value.ownerEncryptedFileKey || value.originalSize === undefined)) {
+      context.addIssue({ code: "custom", message: "Confidential uploads require encryption metadata" });
+    }
+    if (value.encryptionMode === "NONE" && (value.encryptionIv || value.ownerEncryptedFileKey || value.originalSize !== undefined)) {
+      context.addIssue({ code: "custom", message: "Plain uploads cannot contain encryption metadata" });
+    }
   });
 }
 
