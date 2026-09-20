@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { decryptConfidentialFile, encryptFileForOwner, ensureEncryptionIdentity, type IdentityStatus, wrapOwnerFileKeyForRecipient } from "@/lib/client-crypto";
+import { createRecoveryKey, decryptConfidentialFile, encryptFileForOwner, ensureEncryptionIdentity, recoverEncryptionIdentity, resetEncryptionIdentity, type IdentityStatus, wrapOwnerFileKeyForRecipient } from "@/lib/client-crypto";
 
 type User = { name: string; email: string; roles: string[] };
 type DriveFile = {
@@ -81,6 +81,40 @@ export default function DrivePage() {
   const [shareFeedbackError, setShareFeedbackError] = useState("");
   const [identityStatus, setIdentityStatus] = useState<IdentityStatus | "loading" | "error">("loading");
   const [confidentialUpload, setConfidentialUpload] = useState(false);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const [recoveryInput, setRecoveryInput] = useState("");
+  const [recoveryMessage, setRecoveryMessage] = useState("");
+  const [recoveryConfigured, setRecoveryConfigured] = useState(false);
+
+  async function setupRecoveryKey() {
+    setRecoveryBusy(true); setRecoveryMessage(""); setError("");
+    try {
+      const code = await createRecoveryKey();
+      setRecoveryCode(code);
+      setRecoveryConfigured(true);
+      setRecoveryMessage("کد بازیابی ساخته شد. آن را در یک محل امن خارج از سامانه نگهداری کنید.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "ساخت کد بازیابی انجام نشد."); } finally { setRecoveryBusy(false); }
+  }
+
+  async function resetIdentity() {
+    if (!window.confirm("هویت امنیتی بازنشانی شود؟ این کار فقط وقتی ممکن است که فایل محرمانه‌ای نداشته باشید.")) return;
+    setRecoveryBusy(true); setError("");
+    try {
+      await resetEncryptionIdentity();
+      setRecoveryConfigured(false); setRecoveryCode(""); setIdentityStatus("loading");
+      setIdentityStatus(await ensureEncryptionIdentity());
+      setRecoveryMessage("هویت امنیتی با موفقیت دوباره راه‌اندازی شد. اکنون کد بازیابی بسازید.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "بازنشانی هویت امنیتی انجام نشد."); } finally { setRecoveryBusy(false); }
+  }
+
+  async function restoreRecoveryKey() {
+    setRecoveryBusy(true); setRecoveryMessage(""); setError("");
+    try {
+      await recoverEncryptionIdentity(recoveryInput);
+      setIdentityStatus("ready"); setRecoveryInput(""); setRecoveryMessage("هویت امنیتی با موفقیت بازیابی شد.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "بازیابی هویت امنیتی انجام نشد."); } finally { setRecoveryBusy(false); }
+  }
 
   async function downloadFile(file: DriveFile) {
     try {
@@ -136,10 +170,10 @@ export default function DrivePage() {
     }
   }
 
-  useEffect(() => { void loadDrive(trashView); }, [trashView]);
+  useEffect(() => { const timer = window.setTimeout(() => { void loadDrive(trashView); }, 0); return () => window.clearTimeout(timer); }, [trashView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    void ensureEncryptionIdentity().then(setIdentityStatus).catch(() => setIdentityStatus("error"));
+    void ensureEncryptionIdentity().then((status) => { setIdentityStatus(status); return fetch("/api/security/identity-key", { cache: "no-store" }); }).then(async (response) => { if (response.ok) setRecoveryConfigured(Boolean((await response.json()).recoveryConfigured)); }).catch(() => setIdentityStatus("error"));
   }, []);
 
   const hasPendingFiles = files.some((file) => file.status === "PENDING" || file.status === "PROCESSING");
@@ -257,7 +291,7 @@ export default function DrivePage() {
             <button onClick={() => setTrashView(true)} className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-right transition ${trashView ? "bg-blue-50 font-bold text-blue-700" : "text-slate-600 hover:bg-slate-50"}`}><span>♲</span> سطل زباله</button>
             <Link href="/drive/shared" className="flex items-center gap-3 rounded-xl px-4 py-3 text-slate-600 transition hover:bg-slate-50"><span>♧</span> اشتراک‌گذاری</Link>
             {user?.roles.includes("admin") && <Link href="/admin" className="flex items-center gap-3 rounded-xl px-4 py-3 text-slate-600 transition hover:bg-slate-50"><span>⚙</span> مدیریت سامانه</Link>}
-            <span className="flex cursor-not-allowed items-center gap-3 rounded-xl px-4 py-3 text-slate-400"><span>⚙</span> تنظیمات</span>
+            
           </nav>
           <div className="mt-auto rounded-2xl bg-slate-50 p-4 text-xs text-slate-500">
             <p className="font-bold text-slate-700">فضای ذخیره‌سازی</p>
@@ -287,7 +321,10 @@ export default function DrivePage() {
             <div><p className="font-bold">هویت امنیتی دستگاه</p><p className="mt-1 text-xs">{identityStatus === "ready" ? "این دستگاه برای انتقال محرمانه آماده است." : identityStatus === "created" ? "کلید امنیتی این دستگاه ساخته و ثبت شد." : identityStatus === "needs-recovery" ? "کلید خصوصی این دستگاه پیدا نشد؛ بازیابی لازم است." : identityStatus === "error" ? "راه‌اندازی هویت امنیتی انجام نشد." : "در حال آماده‌سازی هویت امنیتی..."}</p></div>
           </section>
 
-          <label className="mt-4 flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={confidentialUpload} onChange={(event) => setConfidentialUpload(event.target.checked)} disabled={uploading || (identityStatus !== "ready" && identityStatus !== "created")} /> انتقال محرمانه برای فایل بعدی</label>
+          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-5"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><p className="font-bold">بازیابی هویت امنیتی</p><p className="mt-1 text-xs leading-6 text-slate-500">برای جلوگیری از دست‌رفتن دسترسی به فایل‌های محرمانه، یک کد بازیابی امن ایجاد کنید.</p></div>{identityStatus !== "needs-recovery" && <button onClick={() => void setupRecoveryKey()} disabled={recoveryBusy || identityStatus === "loading" || identityStatus === "error"} className="rounded-xl border border-blue-200 px-4 py-2.5 text-xs font-bold text-blue-700 disabled:opacity-50">{recoveryBusy ? "در حال پردازش..." : recoveryConfigured ? "ساخت کد جدید" : "ایجاد کد بازیابی"}</button>}</div>{identityStatus === "needs-recovery" && <><div className="mt-4 flex flex-col gap-3 sm:flex-row"><input value={recoveryInput} onChange={(event) => setRecoveryInput(event.target.value)} placeholder="کد بازیابی را وارد کنید" dir="ltr" className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left text-sm outline-none focus:border-blue-500" /><button onClick={() => void restoreRecoveryKey()} disabled={recoveryBusy || !recoveryInput} className="rounded-xl bg-blue-600 px-5 py-3 text-xs font-bold text-white disabled:opacity-50">بازیابی کلید</button></div><button onClick={() => void resetIdentity()} disabled={recoveryBusy} className="mt-3 text-xs font-bold text-red-600 disabled:opacity-50">این دستگاه کلید ندارد؛ راه‌اندازی مجدد</button></>}</section>
+          {recoveryCode && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs font-bold text-amber-900">کد بازیابی را در محل امن ذخیره کنید:</p><code dir="ltr" className="mt-3 block break-all rounded-lg bg-white px-3 py-3 text-center text-sm font-bold tracking-wider text-slate-800">{recoveryCode}</code><button onClick={() => void navigator.clipboard.writeText(recoveryCode)} className="mt-3 text-xs font-bold text-amber-800">کپی کد بازیابی</button><p className="mt-2 text-[11px] leading-5 text-amber-800">این کد در سرور ذخیره نمی‌شود و برای بازیابی کلید خصوصی لازم است.</p></div>}
+          {recoveryMessage && <p className="mt-3 text-xs text-emerald-700">{recoveryMessage}</p>}
+          <label className="mt-4 flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={confidentialUpload} onChange={(event) => setConfidentialUpload(event.target.checked)} disabled={uploading || (identityStatus !== "ready" && identityStatus !== "created") || !recoveryConfigured} /> انتقال محرمانه برای فایل بعدی {!recoveryConfigured && <span className="text-xs text-amber-600">(ابتدا کد بازیابی بسازید)</span>}</label>
 
           <section className="mt-8 rounded-3xl bg-gradient-to-l from-blue-700 to-blue-600 p-6 text-white shadow-lg shadow-blue-100 sm:p-8">
             <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-center"><div><p className="text-sm text-blue-100">فضای کاری امن شما</p><h2 className="mt-2 text-2xl font-bold">فایل جدیدی اضافه کنید</h2><p className="mt-2 max-w-lg text-sm leading-7 text-blue-100">فایل‌ها را در فضای سازمانی ذخیره کنید و در مراحل بعدی با همکاران خود به اشتراک بگذارید.</p></div><label className={`inline-flex cursor-pointer items-center justify-center rounded-xl bg-white px-5 py-3 text-sm font-bold text-blue-700 shadow-sm transition hover:bg-blue-50 ${uploading ? "pointer-events-none opacity-60" : ""}`}><input ref={inputRef} type="file" className="sr-only" disabled={uploading} onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); }} />{uploading ? "در حال آپلود..." : "+ انتخاب فایل"}</label></div>

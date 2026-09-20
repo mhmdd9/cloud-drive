@@ -19,8 +19,21 @@ const publicKeySchema = z.strictObject({
 export async function GET() {
   try {
     const user = await requireUser();
-    const current = await getDb().user.findUnique({ where: { id: user.id }, select: { encryptionPublicKey: true, encryptionKeyCreatedAt: true } });
-    return Response.json({ publicKey: current?.encryptionPublicKey ?? null, createdAt: current?.encryptionKeyCreatedAt ?? null }, { headers: { "Cache-Control": "no-store" } });
+    const current = await getDb().user.findUnique({ where: { id: user.id }, select: { encryptionPublicKey: true, encryptionKeyCreatedAt: true, recoveryEncryptedPrivateKey: true, recoveryKeyCreatedAt: true, _count: { select: { files: true } } } });
+    return Response.json({ publicKey: current?.encryptionPublicKey ?? null, createdAt: current?.encryptionKeyCreatedAt ?? null, recoveryConfigured: Boolean(current?.recoveryEncryptedPrivateKey), recoveryCreatedAt: current?.recoveryKeyCreatedAt ?? null }, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) { return apiError(error); }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    assertSameOrigin(request);
+    const user = await requireUser();
+    const db = getDb();
+    const confidentialFiles = await db.file.count({ where: { ownerId: user.id, encryptionMode: "CONFIDENTIAL", deletedAt: null } });
+    if (confidentialFiles > 0) throw new ApiError(409, "Confidential files prevent identity reset");
+    await db.user.update({ where: { id: user.id }, data: { encryptionPublicKey: Prisma.DbNull, encryptionKeyCreatedAt: null, recoveryEncryptedPrivateKey: null, recoverySalt: null, recoveryIv: null, recoveryKeyCreatedAt: null } });
+    await recordAudit({ actorId: user.id, action: "DEVICE_IDENTITY_RESET", entityType: "User", entityId: user.id, ...auditContext(request) });
+    return Response.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return apiError(error); }
 }
 

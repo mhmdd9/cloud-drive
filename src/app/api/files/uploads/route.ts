@@ -18,6 +18,10 @@ export async function POST(request: Request) {
     const parsed = uploadSchema(await getConfiguredMaxUploadBytes()).safeParse(await readJson(request));
     if (!parsed.success) throw new ApiError(400, "Invalid upload metadata");
     const input = parsed.data;
+    if (input.encryptionMode === "CONFIDENTIAL") {
+      const security = await getDb().user.findUnique({ where: { id: user.id }, select: { recoveryEncryptedPrivateKey: true } });
+      if (!security?.recoveryEncryptedPrivateKey) throw new ApiError(409, "Set up a recovery key before confidential upload");
+    }
     const id = uuidv7();
     const objectKey = createObjectKey(uuidv7(), input.checksum);
     const storage = createStorage();
