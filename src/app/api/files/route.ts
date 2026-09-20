@@ -2,6 +2,7 @@ import { requireUser } from "@/modules/auth/session";
 import { ApiError, apiError } from "@/lib/http";
 import { getDb } from "@/lib/db";
 import { fileIdSchema } from "@/modules/files/validation";
+import { getConfiguredTrashRetentionDays } from "@/modules/admin/settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,8 +22,10 @@ export async function GET(request: Request) {
       take: 50,
       select: { id: true, name: true, mimeType: true, size: true, status: true, createdAt: true, updatedAt: true, deletedAt: true, encryptionMode: true, encryptionIv: true, ownerEncryptedFileKey: true, originalSize: true },
     });
+    const retentionDays = await getConfiguredTrashRetentionDays();
     return Response.json({
-      files: files.map((file) => ({ ...file, size: file.size.toString(), originalSize: file.originalSize?.toString() ?? null })),
+      retentionDays,
+      files: files.map((file) => ({ ...file, size: file.size.toString(), originalSize: file.originalSize?.toString() ?? null, trashExpiresAt: file.deletedAt ? new Date(file.deletedAt.getTime() + retentionDays * 24 * 60 * 60 * 1000).toISOString() : null })),
       nextCursor: files.length === 50 ? files[49].id : null,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {

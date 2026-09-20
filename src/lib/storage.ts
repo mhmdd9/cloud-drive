@@ -4,6 +4,7 @@ import {
   GetBucketVersioningCommand,
   GetPublicAccessBlockCommand,
   GetObjectCommand,
+  DeleteObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -171,4 +172,8 @@ export async function headObject(storage: Storage, key: string, versionId?: stri
     VersionId: versionId,
     ChecksumMode: "ENABLED",
   }));
+}
+
+export async function deleteObject(storage: Storage, key: string, versionId?: string): Promise<void> {
+  await storage.client.send(new DeleteObjectCommand({ Bucket: storage.bucket, Key: key, VersionId: versionId }));
 }

@@ -19,6 +19,7 @@ type DriveFile = {
   encryptionIv: string | null;
   ownerEncryptedFileKey: string | null;
   originalSize: string | null;
+  trashExpiresAt: string | null;
 };
 
 const statusLabels: Record<DriveFile["status"], string> = {

@@ -5,6 +5,7 @@ import { closeFileQueue, fileQueueConnection, fileQueueName, type FileJob } from
 import { createStorage } from "@/lib/storage";
 import { processFile, workerConcurrency } from "@/modules/files/process";
 import { fileIdSchema } from "@/modules/files/validation";
+import { purgeExpiredTrash } from "@/modules/files/trash";
 
 async function main(): Promise<void> {
   const concurrency = workerConcurrency(process.env.FILE_WORKER_CONCURRENCY);
@@ -14,6 +15,14 @@ async function main(): Promise<void> {
     if (job.name !== fileQueueName) throw new Error("Invalid job");
     await processFile(job.data, storage);
   }, { connection, concurrency });
+  const purge = async () => {
+    try {
+      const count = await purgeExpiredTrash(storage);
+      if (count > 0) console.log(`Purged ${count} expired trash file(s)`);
+    } catch (error) { console.error("Trash purge cycle failed", error); }
+  };
+  await purge();
+  const purgeTimer = setInterval(() => { void purge(); }, 60 * 60 * 1000);
   worker.on("error", () => {});
   worker.on("failed", (job) => {
     console.error(fileIdSchema.safeParse(job?.id).success ? job?.id : "unknown");
@@ -24,6 +33,7 @@ async function main(): Promise<void> {
       try {
         await worker.close();
       } finally {
+        clearInterval(purgeTimer);
         await Promise.allSettled([closeFileQueue(), getDb().$disconnect()]);
         storage.client.destroy();
       }
