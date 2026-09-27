@@ -7,10 +7,11 @@ import { recordAudit } from "@/modules/audit/service";
 export async function purgeExpiredTrash(storage: Storage): Promise<number> {
   const retentionDays = await getConfiguredTrashRetentionDays();
   const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
-  const files = await getDb().file.findMany({ where: { deletedAt: { not: null, lte: cutoff } }, select: { id: true, ownerId: true, name: true, objectKey: true, versionId: true } });
+  const files = await getDb().file.findMany({ where: { deletedAt: { not: null, lte: cutoff } }, select: { id: true, ownerId: true, name: true, objectKey: true, versionId: true, versions: { select: { objectKey: true, versionId: true } } } });
   let purged = 0;
   for (const file of files) {
     try {
+      for (const version of file.versions) await deleteObject(storage, version.objectKey, version.versionId);
       await deleteObject(storage, file.objectKey, file.versionId ?? undefined);
       const deleted = await getDb().file.deleteMany({ where: { id: file.id, deletedAt: { not: null, lte: cutoff } } });
       if (deleted.count === 1) {

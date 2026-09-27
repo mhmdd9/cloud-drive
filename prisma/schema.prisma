@@ -103,6 +103,7 @@ model File {
   originalSize BigInt?
   shares    FileShare[]
   publicLinks SharedLink[]
+  versions  FileVersion[]
 
   @@index([ownerId, createdAt])
   @@index([ownerId, deletedAt])
@@ -126,6 +127,20 @@ model FileShare {
   @@index([groupId, fileId])
   @@index([expiresAt])
   @@unique([fileId, userId])
+}
+
+model FileVersion {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  fileId     String   @db.Uuid
+  file       File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  objectKey  String
+  versionId  String
+  size       BigInt
+  editedById String   @db.Uuid
+  createdAt  DateTime @default(now())
+
+  @@unique([fileId, objectKey, versionId])
+  @@index([fileId, createdAt])
 }
 
 model SharedLink {

@@ -16,7 +16,7 @@ const createShareSchema = z.strictObject({
   encryptedFileKey: z.string().regex(/^[A-Za-z0-9_-]{342,700}$/).nullable().optional(),
 });
 
-function serializeShare(share: { id: string; permission: SharePermission; expiresAt: Date | null; file: { id: string; name: string; mimeType: string; size: bigint; status: string; owner: { name: string; email: string } }; user?: { name: string; email: string; username: string | null } | null }) {
+function serializeShare(share: { id: string; permission: SharePermission; expiresAt: Date | null; file: { id: string; name: string; mimeType: string; size: bigint; status: string; encryptionMode: string; owner: { name: string; email: string } }; user?: { name: string; email: string; username: string | null } | null }) {
   return { id: share.id, permission: share.permission, expiresAt: share.expiresAt, file: { ...share.file, size: share.file.size.toString() }, recipient: share.user ?? null };
 }
 
@@ -27,10 +27,10 @@ export async function GET(request: Request) {
     const db = getDb();
     const now = new Date();
     if (view === "outgoing") {
-      const shares = await db.fileShare.findMany({ where: { file: { ownerId: actor.id, deletedAt: null }, userId: { not: null }, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }, orderBy: { id: "desc" }, select: { id: true, permission: true, expiresAt: true, user: { select: { name: true, email: true, username: true } }, file: { select: { id: true, name: true, mimeType: true, size: true, status: true, owner: { select: { name: true, email: true } } } } } });
+      const shares = await db.fileShare.findMany({ where: { file: { ownerId: actor.id, deletedAt: null }, userId: { not: null }, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }, orderBy: { id: "desc" }, select: { id: true, permission: true, expiresAt: true, user: { select: { name: true, email: true, username: true } }, file: { select: { id: true, name: true, mimeType: true, size: true, status: true, encryptionMode: true, owner: { select: { name: true, email: true } } } } } });
       return Response.json({ shares: shares.map(serializeShare) }, { headers: { "Cache-Control": "no-store" } });
     }
-    const shares = await db.fileShare.findMany({ where: { userId: actor.id, file: { deletedAt: null }, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }, orderBy: { id: "desc" }, select: { id: true, permission: true, expiresAt: true, file: { select: { id: true, name: true, mimeType: true, size: true, status: true, owner: { select: { name: true, email: true } } } } } });
+    const shares = await db.fileShare.findMany({ where: { userId: actor.id, file: { deletedAt: null }, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }, orderBy: { id: "desc" }, select: { id: true, permission: true, expiresAt: true, file: { select: { id: true, name: true, mimeType: true, size: true, status: true, encryptionMode: true, owner: { select: { name: true, email: true } } } } } });
     return Response.json({ shares: shares.map(serializeShare) }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return apiError(error);

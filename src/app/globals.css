@@ -23,3 +23,17 @@ body {
 button, a, input {
   outline-offset: 4px;
 }
+/* The document canvas intentionally uses familiar Word-style spacing. */
+.word-document { line-height: 1.9; overflow-wrap: anywhere; }
+.word-document p { margin: .6rem 0; }
+.word-document h1 { font-size: 1.8rem; font-weight: 700; margin: 1.3rem 0 .7rem; }
+.word-document h2 { font-size: 1.5rem; font-weight: 700; margin: 1.2rem 0 .6rem; }
+.word-document h3 { font-size: 1.25rem; font-weight: 700; margin: 1rem 0 .5rem; }
+.word-document ul { list-style: disc; padding-inline-start: 2rem; }
+.word-document ol { list-style: decimal; padding-inline-start: 2rem; }
+.word-document blockquote { border-inline-start: 3px solid #94a3b8; padding-inline-start: 1rem; color: #475569; }
+.word-document table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+.word-document th, .word-document td { border: 1px solid #cbd5e1; padding: .35rem .6rem; min-width: 5rem; vertical-align: top; }
+.word-document th { background: #f1f5f9; }
+.word-document img { max-width: 100%; height: auto; }
+.word-document a { color: #1d4ed8; text-decoration: underline; }
