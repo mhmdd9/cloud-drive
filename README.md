@@ -10,14 +10,15 @@
 | --- | --- |
 | ورود | نام کاربری یا ایمیل و رمز عبور؛ ساخت مدیر اولیه با seed |
 | نشست | JWT، رکورد قابل لغو در Redis، کوکی HttpOnly و بررسی فعال بودن کاربر |
-| نقش و گروه | مدل داده، نقش‌های اولیه و توابع سیاست دسترسی؛ بدون پنل مدیریت |
-| فایل | API فهرست فایل‌های خود کاربر، آپلود مستقیم و تأیید تکمیل |
+| نقش و مدیریت | پنل مدیر برای کاربران، نقش‌ها، فعال‌بودن حساب، تنظیمات آپلود و گزارش رویدادها |
+| فایل | کارپوشهٔ کاربر با جست‌وجوی نام، آپلود، دانلود، حذف نرم و بازیابی از سطل زباله |
 | پردازش | صف BullMQ و ورکر مستقل برای بررسی نسخهٔ آپلودشده |
-| رابط کاربری | صفحهٔ معرفی و فرم ورود؛ بدون فایل‌منیجر و رابط آپلود یا دانلود |
-| اشتراک‌گذاری | مدل داده و توابع سیاست؛ API و رابط هنوز تکمیل نشده‌اند |
-| نمایش و ویرایش | API دانلود، پیش‌نمایش PDF و ویرایش Word/Excel پیاده‌سازی نشده‌اند |
+| اشتراک‌گذاری | اشتراک فایل با کاربر و لینک عمومی زمان‌دار؛ نمایش موارد دریافتی و ارسالی و لغو دسترسی |
+| امنیت فایل | رمزنگاری محرمانهٔ سمت مرورگر با هویت دستگاه و کد بازیابی؛ فایل‌های عادی رمزنگاری سمت کاربر ندارند |
+| رابط کاربری | صفحهٔ معرفی، ورود، کارپوشه، اشتراک‌گذاری، داشبورد مدیریت و صفحهٔ عمومی لینک |
+| نمایش و ویرایش | دانلود پیاده‌سازی شده؛ پیش‌نمایش و ویرایش PDF/Word/Excel هنوز وجود ندارد؛ اشتراک VIEW نیز فعلاً پیش‌نمایش ندارد |
 
-پوشه‌بندی، حذف و تغییرنام، ثبت‌نام عمومی، بازیابی رمز، MFA، جست‌وجو و آپلود چندقسمتی نیز وجود ندارند. ورود موفق به صفحهٔ معرفی برمی‌گردد، نه داشبورد فایل‌ها.
+پوشه‌بندی، تغییرنام فایل، ثبت‌نام عمومی، بازیابی رمز، MFA، آپلود چندقسمتی و اسکن بدافزار وجود ندارند. حذف فایل نرم است؛ ورکر فایل‌های سطل زباله را پس از پایان مهلت نگهداری (پیش‌فرض ۳۰ روز) پاک می‌کند. پس از ورود موفق، کاربر به کارپوشه می‌رود.
 
 فناوری‌ها: **Next.js 16 / React 19 / TypeScript / Tailwind CSS 4**، **PostgreSQL 17 / Prisma 6**، **Redis 7.4 / BullMQ** و ذخیره‌سازی سازگار با S3. بایت‌های فایل در storage و متادیتا در PostgreSQL نگهداری می‌شوند. ظرفیت چند ده هزار کاربر هنوز با آزمون بار تأیید نشده است.
 
@@ -35,6 +36,8 @@ Copy-Item .env.example .env
 
 | متغیر | مقدار یا قاعده |
 | --- | --- |
+| `DATABASE_URL` | برای اجرای ابزارهای میزبان؛ اتصال PostgreSQL با میزبان، پورت، نام DB و رمز معتبر |
+| `REDIS_URL` | برای اجرای ورکر/ابزارهای میزبان؛ اتصال Redis با رمز معتبر |
 | `POSTGRES_USER` / `POSTGRES_DB` | پیش‌فرض هر دو `clouddrive` |
 | `POSTGRES_PASSWORD` / `REDIS_PASSWORD` | رمز خام و مستقل هر سرویس؛ نباید خالی باشند |
 | `MINIO_ROOT_USER` | پیش‌فرض `clouddrive`؛ فقط مدیریت storage |
@@ -53,15 +56,44 @@ Copy-Item .env.example .env
 
 شناسه و راز برنامهٔ S3 باید **هر دو با مقادیر متناظر root متفاوت باشند**. از حساب root برای وب، ورکر یا smoke استفاده نکنید. برای رمزهای دارای `$` یا `#`، قواعد نقل‌قول `.env` را رعایت کنید؛ مقدار تک‌نقل‌قول‌شده در Compose به‌صورت literal خوانده می‌شود.
 
-در Compose، entrypoint از رمزهای **خام** PostgreSQL و Redis، URL داخلی را با `encodeURIComponent` می‌سازد؛ این رمزها را از قبل URL-encode نکنید. `DATABASE_URL` و `REDIS_URL` داخل `.env` فقط برای اجرای دستی ابزارها روی میزبان‌اند و Compose از آن‌ها برای اتصال برنامه استفاده نمی‌کند. PostgreSQL و Redis روی میزبان پورت منتشر نمی‌کنند؛ اجرای دستی به اتصال مستقل و URL صحیح با رمز percent-encoded نیاز دارد، نه صرفاً URLهای نمونهٔ localhost.
+در Compose، entrypoint از رمزهای **خام** PostgreSQL و Redis، URL داخلی را با `encodeURIComponent` می‌سازد؛ این رمزها را از قبل URL-encode نکنید. Compose URLهای اتصال داخلی را خودش می‌سازد و از `DATABASE_URL` و `REDIS_URL` فایل `.env` برای اتصال سرویس‌ها استفاده نمی‌کند. PostgreSQL و Redis روی `127.0.0.1` پورت‌های پیش‌فرض 5432 و 6379 را منتشر می‌کنند؛ URLهای میزبان در `.env` برای ابزارهای دستی‌اند و باید با رمز واقعی و URL-encoding صحیح تنظیم شوند.
 
-پس از تکمیل `.env`، تنها فرمان راه‌اندازی:
+پس از تکمیل `.env`، برای اجرای یکپارچهٔ محیط توسعه با Docker Compose:
 
 ```powershell
 docker compose up --build -d
 ```
 
 این فرمان ایمیج dev را می‌سازد و ایمیج‌های زیرساختِ موجودنبودن را دریافت می‌کند. آماده‌سازی خودکار شامل migration، seed، ایجاد/اعتبارسنجی کلید پایدار، bucket خصوصی با versioning و SSE-KMS، کاربر و IAM جداگانهٔ برنامه و CORS است؛ سپس وب و ورکر اجرا می‌شوند.
+
+### اجرای وب و ورکر از روی سورس
+
+برای توسعهٔ مستقیم روی میزبان، Node.js 22.13 یا بالاتر از شاخهٔ 22 و npm لازم است. ابتدا وابستگی‌ها را نصب و فایل محیط را بسازید:
+
+```powershell
+npm ci
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+```
+
+`.env` را با رازهای معتبر تکمیل کنید. برای این روش، `DATABASE_URL` و `REDIS_URL` باید به سرویس‌های قابل‌دسترسی از میزبان اشاره کنند؛ نمونه‌های دارای `replace-me` را عوض کنید. Compose پورت PostgreSQL و Redis را روی localhost منتشر می‌کند. برای بالا آوردن زیرساخت Compose (PostgreSQL، Redis و MinIO با KMS و آماده‌سازی storage) اجرا کنید:
+
+```powershell
+docker compose up -d postgres redis minio kms-key-init storage-init
+```
+
+سپس migration و مدیر اولیه را بسازید و در ترمینال‌های جداگانه وب و ورکر را اجرا کنید:
+
+```powershell
+npm run db:migrate
+npm run db:seed
+npm run dev
+```
+
+```powershell
+npm run worker
+```
+
+`npm run dev` و `npm run build` پیش از اجرای Next.js به‌طور خودکار Prisma Client را تولید می‌کنند. برای کار با فایل‌ها، علاوه بر PostgreSQL و Redis، پیکربندی MinIO/S3 و متغیرهای S3 در `.env` نیز باید معتبر باشند.
 
 ```powershell
 docker compose ps -a
@@ -148,9 +180,27 @@ docker build --target runtime -t cloude-drive:local .
 | POST | `/api/auth/login` | ورود و تنظیم کوکی نشست |
 | POST | `/api/auth/logout` | لغو نشست فعلی |
 | GET | `/api/auth/me` | هویت و نقش‌های کاربر |
-| GET | `/api/files?cursor=<uuid>` | فایل‌های خود کاربر، صفحه‌های ۵۰تایی؛ اندازه به‌صورت رشته |
-| POST | `/api/files/uploads` | ساخت رکورد و URL آپلود با اعتبار ۳۰۰ ثانیه |
-| POST | `/api/files/:id/complete` | تأیید نسخه و ارسال به صف |
+| GET | `/api/files?cursor=<uuid>` | فهرست فایل‌ها و سطل زبالهٔ کاربر |
+| POST | `/api/files/uploads` | ساخت رکورد و URL آپلود |
+| DELETE | `/api/files/:id` | حذف نرم فایل |
+| POST | `/api/files/:id/complete` | تأیید آپلود و ارسال به صف |
+| GET | `/api/files/:id/download` | دانلود فایل مجاز |
+| POST | `/api/files/:id/restore` | بازیابی فایل حذف‌شده |
+| GET / POST | `/api/shares` | فهرست اشتراک‌ها و اشتراک فایل با کاربر |
+| GET | `/api/shares/recipient` | جست‌وجوی گیرندهٔ اشتراک |
+| DELETE | `/api/shares/:id` | لغو اشتراک با کاربر |
+| GET | `/api/shares/:id/download` | دانلود فایل اشتراکی |
+| GET / POST | `/api/links` | فهرست و ساخت لینک عمومی |
+| DELETE | `/api/links/:id` | لغو لینک عمومی |
+| GET | `/api/public-links/:token` | اطلاعات عمومی لینک |
+| GET | `/api/public-links/:token/download` | دانلود از لینک عمومی |
+| GET / PUT | `/api/security/recovery-key` | وضعیت/ثبت کد بازیابی هویت دستگاه |
+| GET / PUT / DELETE | `/api/security/identity-key` | دریافت، ثبت یا حذف کلید هویت دستگاه |
+| GET / POST | `/api/admin/users` | فهرست و ایجاد کاربر؛ نیازمند دسترسی مدیر |
+| PATCH | `/api/admin/users/:id` | ویرایش کاربر، نقش و وضعیت |
+| GET / PATCH | `/api/admin/settings` | دریافت/تغییر تنظیمات |
+| GET | `/api/admin/dashboard` | آمار داشبورد مدیریت |
+| GET | `/api/admin/audit-logs` | گزارش رویدادهای ممیزی |
 
 تمام POSTها `Origin` مطابق `APP_ORIGIN` می‌خواهند؛ JSON باید `Content-Type: application/json` داشته باشد و حداکثر ۱۶ KiB باشد. مسیرهای محافظت‌شده به کوکی نشست نیاز دارند.
 
@@ -169,9 +219,7 @@ npm run lint
 npm run typecheck
 ```
 
-**۱۸۸ تست واحد/قرارداد handlerها پاس شده‌اند.** تست‌های واحد سرویس‌ها از mock استفاده می‌کنند و به Docker نیاز ندارند؛ عبور آن‌ها اتصال واقعی یا ظرفیت سیستم را ثابت نمی‌کند.
-
-آزمون زندهٔ گزارش‌شده با سرویس‌ها و اعتبارنامهٔ واقعی برنامه پاس شده است: ورود با username، نشست، CORS `OPTIONS`، `PUT`، complete، رسیدن ورکر به `READY`، خواندن نسخهٔ مشخص با تطبیق بایت‌ها و SHA-256 و SSE-KMS، خواندن دوباره پس از restart MinIO و `401` پس از logout. **این آزمون، اجرای مرورگر واقعی یا آزمون no-egress نیست.**
+تست‌های واحد سرویس‌ها از mock استفاده می‌کنند و به Docker نیاز ندارند؛ عبور آن‌ها اتصال واقعی یا ظرفیت سیستم را ثابت نمی‌کند. برای بررسی یکپارچهٔ محیط، از smoke روی پشتهٔ روشن استفاده کنید.
 
 برای تکرار smoke روی پشتهٔ روشن، با `.env` معتبر و `ADMIN_USERNAME` و رمز واقعی حساب موجود:
 
@@ -183,7 +231,7 @@ node docker/smoke.mjs
 
 برای آزمون پایداری کلید، `node docker/smoke.mjs --pause-before-readback` را اجرا کنید. در توقف اسکریپت، از ترمینال دیگر `docker compose restart minio` بزنید، منتظر healthy شدن بمانید و ظرف ۱۲۰ ثانیه در ترمینال اسکریپت `restarted` وارد کنید؛ خواندن همان نسخه تکرار می‌شود.
 
-دستورات دستی موجود: `npm run db:generate`، `npm run db:migrate` و `npm run db:seed` برای Prisma؛ `npm run dev` و `npm run worker` برای توسعه؛ `npm run build` و `npm start` برای build و اجرای production. این‌ها مراحل اضافی راه‌اندازی Compose نیستند و اجرای دستی‌شان اتصال و محیط مناسب خود را می‌خواهد.
+دستورات دستی موجود: `npm run db:generate`، `npm run db:migrate` و `npm run db:seed` برای Prisma؛ `npm run dev` و `npm run worker` برای توسعه؛ `npm run build` و `npm start` برای build و اجرای production. اجرای دستی به سرویس‌ها و متغیرهای محیطی قابل‌دسترسی از میزبان نیاز دارد.
 
 ساختار اصلی: `src/app/` صفحات و API، `src/lib/` اتصال سرویس‌ها، `src/modules/` منطق دامنه، `src/workers/` ورکر، `prisma/` مدل و migration و seed، `docker/` ابزار آماده‌سازی و smoke. پیش از تغییر کد Next.js، `AGENTS.md` و راهنمای نسخهٔ نصب‌شده در `node_modules/next/dist/docs/` را بخوانید.
 
@@ -193,6 +241,7 @@ node docker/smoke.mjs
 | --- | --- |
 | خطای Docker یا گزینهٔ ناشناخته | فعال بودن Docker و نسخهٔ Compose؛ `docker compose up --help` |
 | image موجود نیست | build/pull در مرحلهٔ آنلاین؛ همهٔ ایمیج‌ها را به میزبان آفلاین منتقل کنید |
+| `Environment variable not found: DATABASE_URL` | اجرای میزبان: مقدار معتبر `DATABASE_URL` در `.env` و دیتابیس قابل‌دسترسی؛ Compose URL داخلی را خودش می‌سازد |
 | خطای متغیر یا seed | `.env` کامل، قواعد مدیر و نام کاربری موجود؛ رمز قبلی با seed عوض نمی‌شود |
 | توقف storage-init | تفاوت root/app، قواعد کلیدها، policy یا IAM غیرمنتظره؛ لاگ همان سرویس |
 | خطای DB یا migration | health و لاگ `postgres` و `migrate`؛ رمز ذخیره‌شده در volume |
