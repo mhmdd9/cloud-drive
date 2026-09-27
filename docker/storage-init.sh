@@ -90,7 +90,7 @@ mc --json encrypt info "$target" > "$workspace/encryption.json" 2>/dev/null || f
 has_field algorithm aws:kms "$workspace/encryption.json" || fail 'Bucket encryption is not SSE-KMS.'
 has_field keyId "$S3_KMS_KEY_ID" "$workspace/encryption.json" || fail 'Bucket encryption key does not match.'
 
-printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetBucketLocation","s3:ListBucket","s3:GetBucketPolicy","s3:GetBucketVersioning"],"Resource":["arn:aws:s3:::%s"]},{"Effect":"Allow","Action":["s3:PutObject","s3:GetObject","s3:GetObjectVersion"],"Resource":["arn:aws:s3:::%s/*"]}]}\n' "$S3_BUCKET" "$S3_BUCKET" > "$workspace/policy.json"
+  printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetBucketLocation","s3:ListBucket","s3:GetBucketPolicy","s3:GetBucketVersioning"],"Resource":["arn:aws:s3:::%s"]},{"Effect":"Allow","Action":["s3:PutObject","s3:GetObject","s3:GetObjectVersion","s3:DeleteObject","s3:DeleteObjectVersion"],"Resource":["arn:aws:s3:::%s/*"]}]}\n' "$S3_BUCKET" "$S3_BUCKET" > "$workspace/policy.json"
 mc admin policy create provision "$policy" "$workspace/policy.json" > /dev/null 2>&1 || fail 'Cannot create the application identity policy.'
 if [ "$existing" = false ]; then
   printf '%s\n%s\n' "$S3_ACCESS_KEY_ID" "$S3_SECRET_ACCESS_KEY" | mc admin user add provision > /dev/null 2>&1 || fail 'Cannot create the application user.'

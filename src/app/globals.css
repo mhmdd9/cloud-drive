@@ -37,3 +37,9 @@ button, a, input {
 .word-document th { background: #f1f5f9; }
 .word-document img { max-width: 100%; height: auto; }
 .word-document a { color: #1d4ed8; text-decoration: underline; }
+
+.excel-editor-host {
+  width: 100%;
+  height: 800px;
+  overflow: hidden;
+}
